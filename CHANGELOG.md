@@ -5,6 +5,33 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.7] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Party token now spawns at leader's position instead of average position
+- **CRITICAL**: Fixed actor linking - tokens now properly maintain actor associations after deployment
+- **CRITICAL**: Improved PF2e compatibility - properly handles actor UUIDs and prototype token data
+- **CRITICAL**: Formation rotation now correctly maintains relative positions
+- Fixed deployment to remove synthetic actor data that could cause linking issues
+
+### Added
+- Leader selection dialog - choose which token should be the "front" of the party
+- Actor UUID storage for more robust actor linking
+- Better error handling for third-party module conflicts
+- Visual feedback showing leader name in both Form and Deploy dialogs
+
+### Changed
+- Completely rewrote Form Party macro for better positioning logic
+- Completely rewrote Deploy Party macro for more reliable actor linking
+- Improved member data structure to include leader flag and actor UUID
+- Better token data handling to prevent actor dissociation
+
+### Technical
+- Store both actorId and actorUuid for redundant actor resolution
+- Remove delta and actorData from token creation to prevent PF2e conflicts
+- Use fresh prototypeToken data for each deployment
+- Better handling of async actor resolution with UUID fallback
+
 ## [2.0.6] - 2025-10-27
 
 ### Fixed
