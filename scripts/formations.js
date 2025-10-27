@@ -12,10 +12,18 @@ export const FORMATION_PRESETS = {
   tight: {
     name: "Tight (50%)",
     description: "Compress formation to 50% spacing",
-    transform: (dx, dy) => ({ 
-      dx: Math.round(dx * 0.5), 
-      dy: Math.round(dy * 0.5) 
-    })
+    transform: (dx, dy) => {
+      const transformed = { 
+        dx: Math.round(dx * 0.5), 
+        dy: Math.round(dy * 0.5) 
+      };
+      // Ensure at least some spacing if original position was non-zero
+      if (transformed.dx === 0 && transformed.dy === 0 && (dx !== 0 || dy !== 0)) {
+        transformed.dx = dx > 0 ? 1 : (dx < 0 ? -1 : 0);
+        transformed.dy = dy > 0 ? 1 : (dy < 0 ? -1 : 0);
+      }
+      return transformed;
+    }
   },
   
   wide: {
