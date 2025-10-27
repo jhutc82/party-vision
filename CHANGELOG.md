@@ -5,6 +5,21 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.4] - 2025-10-27
+
+### Fixed
+- **Critical**: Fixed formation rotation bug - deploy now correctly rotates relative to original facing direction
+- **Critical**: Implemented proper wall collision detection during deployment - tokens no longer pass through walls
+- Fixed deployment to properly check multiple points around token bounds for wall collisions
+
+### Removed
+- Removed ghosted preview on hover feature (not useful in practice)
+- Removed "Show Ghosted Preview on Hover" setting from module configuration
+
+### Changed
+- Improved wall collision detection with multi-point testing (center + 4 corners)
+- Enhanced deployment validation to prevent tokens from being placed in blocked areas
+
 ## [2.0.0] - 2025-01-XX
 
 ### Added
