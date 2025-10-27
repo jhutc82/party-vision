@@ -5,6 +5,24 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.6] - 2025-10-27
+
+### Fixed
+- **Critical**: Fixed formation transformations - formations (Tight, Wide, Column, Line, Wedge) now properly apply when deploying party
+- Fixed Scout Ahead to properly link actors - tokens now correctly associate with their actors
+- Improved error messages with more actionable guidance
+
+### Changed
+- Added JSDoc documentation to key functions
+- Extracted magic numbers to named constants for better maintainability
+- Removed unused CSS selector for select elements
+- Added visual selection state for direction buttons in Deploy dialog
+- Code cleanup and improved organization
+
+### Technical
+- Constants added: MAX_PORTRAITS, PORTRAIT_SIZE, NEARBY_DISTANCE_MULTIPLIER, SPIRAL_SEARCH_MAX_RADIUS, WALL_COLLISION_TEST_OFFSET
+- Better code documentation throughout
+
 ## [2.0.5] - 2025-10-27
 
 ### Fixed
