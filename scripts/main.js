@@ -29,7 +29,7 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.10');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.11');
 
   // Check for libWrapper dependency
   if (!game.modules.get('libWrapper')?.active) {
@@ -202,7 +202,36 @@ Hooks.once('ready', async () => {
   } catch (e) {
     console.error('Party Vision | Error loading compendium:', e);
   }
+  
+  // Register visual indicator hooks after settings are ready
+  setupVisualIndicators();
 });
+
+// ==============================================
+// VISUAL INDICATORS SETUP
+// ==============================================
+
+function setupVisualIndicators() {
+  Hooks.on('refreshToken', (token) => {
+    const memberData = token.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return;
+    
+    // Remove existing overlays
+    token.children.forEach(child => {
+      if (child.name === 'party-vision-overlay') {
+        child.destroy();
+      }
+    });
+    
+    if (game.settings.get('party-vision', 'showMemberPortraits')) {
+      renderMemberPortraits(token, memberData);
+    }
+    
+    if (game.settings.get('party-vision', 'showRangeIndicator')) {
+      renderRangeIndicator(token, memberData);
+    }
+  });
+}
 
 // ==============================================
 // TOKEN HUD INTEGRATION
@@ -341,28 +370,8 @@ Hooks.on('getTokenContextOptions', (html, contextOptions) => {
 });
 
 // ==============================================
-// VISUAL INDICATORS
+// VISUAL INDICATORS - Member Portraits & Range Indicator
 // ==============================================
-
-Hooks.on('refreshToken', (token) => {
-  const memberData = token.document.getFlag('party-vision', 'memberData');
-  if (!memberData) return;
-  
-  // Remove existing overlays
-  token.children.forEach(child => {
-    if (child.name === 'party-vision-overlay') {
-      child.destroy();
-    }
-  });
-  
-  if (game.settings.get('party-vision', 'showMemberPortraits')) {
-    renderMemberPortraits(token, memberData);
-  }
-  
-  if (game.settings.get('party-vision', 'showRangeIndicator')) {
-    renderRangeIndicator(token, memberData);
-  }
-});
 
 function renderMemberPortraits(token, memberData) {
   const container = new PIXI.Container();
@@ -432,11 +441,7 @@ function renderRangeIndicator(token, memberData) {
 }
 
 // ==============================================
-// GHOSTED PREVIEW ON HOVER
-// ==============================================
-
-// ==============================================
-// AUTO-DEPLOY ON COMBAT START
+// FOLLOW-THE-LEADER MODE
 // ==============================================
 
 Hooks.on('combatStart', async (combat, updateData) => {
