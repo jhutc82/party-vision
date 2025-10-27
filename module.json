@@ -43,8 +43,8 @@
     }
   ],
   "url": "https://github.com/jhutc82/party-vision",
-  "manifest": "https://github.com/jhutc82/party-vision/releases/latest/download/module.json",
-  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/2.0.0.zip",
+  "manifest": "https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.json",
+  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/v2.0.0.zip",
   "license": "MIT",
   "readme": "https://github.com/jhutc82/party-vision/blob/main/README.md",
   "bugs": "https://github.com/jhutc82/party-vision/issues",
