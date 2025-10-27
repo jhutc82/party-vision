@@ -5,6 +5,25 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.5] - 2025-10-27
+
+### Fixed
+- **Critical**: Fixed rotation direction - formations now rotate correctly (negated rotation angle for Foundry's coordinate system)
+- **Critical**: Fixed actor linking - deployed tokens now properly link to their actors
+- **Critical**: Fixed Token HUD integration - wrapped html in jQuery to prevent "html.find is not a function" error
+- Fixed deployment to explicitly set actorId and actorLink properties
+
+### Added
+- **Party Token Customization** - Form Party now shows dialog to customize party name and token image
+- File picker in Form Party dialog for easy token image selection
+- Member names display in Form Party dialog
+- Enhanced member data to include token names for reference
+
+### Changed
+- Improved Form Party macro with customization options
+- Better error handling for third-party module conflicts
+- Enhanced token data merging to preserve actor associations
+
 ## [2.0.4] - 2025-10-27
 
 ### Fixed
