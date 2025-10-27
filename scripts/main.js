@@ -175,7 +175,9 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
   const canAct = game.user.isGM || game.settings.get('party-vision', 'allowPlayerActions');
   if (!canAct) return;
   
-  const col = html.find('.col.left');
+  // Ensure html is a jQuery object
+  const $html = html instanceof jQuery ? html : $(html);
+  const col = $html.find('.col.left');
   const controlled = canvas.tokens.controlled;
   
   // Show FORM PARTY button (multiple tokens selected)
@@ -609,7 +611,8 @@ async function deployParty(partyToken, radians) {
   const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
   
   // Calculate the rotation needed: target direction - original direction
-  const rotationAngle = radians - lastFacing;
+  // Negate to get correct clockwise rotation in Foundry's coordinate system
+  const rotationAngle = -(radians - lastFacing);
   
   const cos = Math.cos(rotationAngle);
   const sin = Math.sin(rotationAngle);
@@ -641,7 +644,9 @@ async function deployParty(partyToken, radians) {
     
     newTokensData.push(foundry.utils.mergeObject(tokenData, {
       x: finalX,
-      y: finalY
+      y: finalY,
+      actorId: actor.id,  // Explicitly set actor ID
+      actorLink: actor.prototypeToken.actorLink  // Preserve actor link setting
     }));
   }
   
