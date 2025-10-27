@@ -69,15 +69,6 @@ Hooks.once('init', () => {
     default: true,
   });
 
-  game.settings.register('party-vision', 'showGhostedPreview', {
-    name: "Show Ghosted Preview on Hover",
-    hint: "Show where tokens would deploy when hovering over party token (GM only).",
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true,
-  });
-
   game.settings.register('party-vision', 'savedFormations', {
     name: "Custom Formations",
     hint: "Your saved custom formations (use the UI to manage these).",
@@ -85,6 +76,17 @@ Hooks.once('init', () => {
     config: false,
     type: Object,
     default: {}
+  });
+
+  // --- REGISTER KEYBINDINGS (MUST BE IN INIT HOOK) ---
+  game.keybindings.register('party-vision', 'toggleFollowLeader', {
+    name: "Toggle Follow-the-Leader Mode",
+    hint: "Enable/disable follow-the-leader movement for selected tokens.",
+    editable: [{ key: "KeyL", modifiers: ["Control"] }],
+    onDown: () => {
+      toggleFollowLeaderMode();
+      return true;
+    }
   });
 
   // --- REGISTER VISION HOOK (FIX: detectionModes from prototypeToken) ---
@@ -161,17 +163,6 @@ Hooks.once('init', () => {
 
 Hooks.once('ready', () => {
   console.log('Party Vision | Module Ready');
-  
-  // Register keyboard shortcuts
-  game.keybindings.register('party-vision', 'toggleFollowLeader', {
-    name: "Toggle Follow-the-Leader Mode",
-    hint: "Enable/disable follow-the-leader movement for selected tokens.",
-    editable: [{ key: "KeyL", modifiers: ["Control"] }],
-    onDown: () => {
-      toggleFollowLeaderMode();
-      return true;
-    }
-  });
 });
 
 // ==============================================
@@ -397,61 +388,6 @@ function renderRangeIndicator(token, memberData) {
 // GHOSTED PREVIEW ON HOVER
 // ==============================================
 
-Hooks.on('hoverToken', (token, hovered) => {
-  if (!game.user.isGM) return;
-  if (!game.settings.get('party-vision', 'showGhostedPreview')) return;
-  
-  const memberData = token.document.getFlag('party-vision', 'memberData');
-  if (!memberData) return;
-  
-  if (hovered) {
-    showGhostedPreview(token, memberData);
-  } else {
-    hideGhostedPreview();
-  }
-});
-
-let ghostedTokens = [];
-
-function showGhostedPreview(partyToken, memberData) {
-  hideGhostedPreview();
-  
-  const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || 0;
-  const cos = Math.cos(lastFacing);
-  const sin = Math.sin(lastFacing);
-  const gridSize = canvas.grid.size;
-  
-  memberData.forEach(member => {
-    const actor = game.actors.get(member.actorId);
-    if (!actor) return;
-    
-    const dx = member.dx;
-    const dy = member.dy;
-    const rotatedX = Math.round(dx * cos - dy * sin);
-    const rotatedY = Math.round(dx * sin + dy * cos);
-    
-    const partyGridX = partyToken.x / gridSize;
-    const partyGridY = partyToken.y / gridSize;
-    const targetX = (partyGridX + rotatedX) * gridSize;
-    const targetY = (partyGridY + rotatedY) * gridSize;
-    
-    const ghost = new PIXI.Sprite(PIXI.Texture.from(actor.prototypeToken.texture.src));
-    ghost.width = actor.prototypeToken.width * gridSize;
-    ghost.height = actor.prototypeToken.height * gridSize;
-    ghost.x = targetX;
-    ghost.y = targetY;
-    ghost.alpha = 0.3;
-    
-    canvas.tokens.addChild(ghost);
-    ghostedTokens.push(ghost);
-  });
-}
-
-function hideGhostedPreview() {
-  ghostedTokens.forEach(ghost => ghost.destroy());
-  ghostedTokens = [];
-}
-
 // ==============================================
 // AUTO-DEPLOY ON COMBAT START
 // ==============================================
@@ -669,8 +605,14 @@ async function deployParty(partyToken, radians) {
   const gridSize = canvas.grid.size;
   const assignedGridSpots = new Set();
   
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
+  // Get the original facing direction (default is North = -π/2)
+  const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
+  
+  // Calculate the rotation needed: target direction - original direction
+  const rotationAngle = radians - lastFacing;
+  
+  const cos = Math.cos(rotationAngle);
+  const sin = Math.sin(rotationAngle);
   const newTokensData = [];
   
   // Sort by distance from center
@@ -741,13 +683,25 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   const centerY = finalY + (tokenHeight / 2);
   
   // Check for wall collisions using v13 API
-  // Test if the center point is inside any wall polygons
-  const walls = canvas.walls.placeables.filter(w => w.document.move !== CONST.WALL_MOVEMENT_TYPES.NONE);
-  for (const wall of walls) {
-    // Simple line segment check - see if center point crosses the wall
-    const wallLine = wall.document;
-    // For now, just skip wall checking if it's causing issues
-    // A more robust solution would check wall polygons properly
+  // Test multiple points around the token to ensure it doesn't pass through walls
+  const testPoints = [
+    { x: centerX, y: centerY },                           // Center
+    { x: finalX + 5, y: finalY + 5 },                     // Top-left corner
+    { x: finalX + tokenWidth - 5, y: finalY + 5 },        // Top-right corner
+    { x: finalX + 5, y: finalY + tokenHeight - 5 },       // Bottom-left corner
+    { x: finalX + tokenWidth - 5, y: finalY + tokenHeight - 5 } // Bottom-right corner
+  ];
+  
+  for (const point of testPoints) {
+    // Check if any point collides with a movement-blocking wall
+    const collision = canvas.walls.checkCollision(
+      new Ray({ x: point.x - 1, y: point.y - 1 }, { x: point.x + 1, y: point.y + 1 }),
+      { type: "move", mode: "any" }
+    );
+    
+    if (collision) {
+      return false; // Wall blocks this position
+    }
   }
   
   // Check for existing token overlaps
