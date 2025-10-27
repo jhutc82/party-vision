@@ -29,7 +29,7 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.7');
 
   // Check for libWrapper dependency
   if (!game.modules.get('lib-wrapper')?.active) {
@@ -640,11 +640,29 @@ async function deployParty(partyToken, radians) {
   const newTokensData = [];
   
   // Sort by distance from center
-  memberData.sort((a, b) => (Math.abs(a.dx) + Math.abs(a.dy)) - (Math.abs(b.dx) + Math.abs(b.dy)));
+  const sortedMembers = [...memberData].sort((a, b) => 
+    (Math.abs(a.dx) + Math.abs(a.dy)) - (Math.abs(b.dx) + Math.abs(b.dy))
+  );
   
-  for (const member of memberData) {
-    const actor = game.actors.get(member.actorId);
-    if (!actor) continue;
+  for (const member of sortedMembers) {
+    // Get actor - try UUID first, then ID for robust resolution
+    let actor;
+    if (member.actorUuid) {
+      try {
+        actor = await fromUuid(member.actorUuid);
+      } catch (e) {
+        console.warn(`Party Vision: Could not resolve actor UUID ${member.actorUuid}`, e);
+      }
+    }
+    
+    if (!actor) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) {
+      console.warn(`Party Vision: Actor not found for member ${member.name || member.actorId}`);
+      continue;
+    }
     
     const dx = member.dx;
     const dy = member.dy;
@@ -656,19 +674,33 @@ async function deployParty(partyToken, radians) {
     const idealGridX = Math.round(partyGridX + rotatedX);
     const idealGridY = Math.round(partyGridY + rotatedY);
     
-    const tokenData = actor.prototypeToken.toObject();
+    // Get fresh token data from actor's prototype
+    const protoToken = actor.prototypeToken;
+    const tokenData = protoToken.toObject();
+    
     const validSpot = findValidSpot(idealGridX, idealGridY, tokenData, assignedGridSpots);
     assignedGridSpots.add(`${validSpot.x},${validSpot.y}`);
     
     const finalX = validSpot.x * gridSize;
     const finalY = validSpot.y * gridSize;
     
-    newTokensData.push(foundry.utils.mergeObject(tokenData, {
+    // CRITICAL: Create clean token data for proper actor linking
+    const newToken = {
+      ...tokenData,
       x: finalX,
       y: finalY,
-      actorId: actor.id,  // Explicitly set actor ID
-      actorLink: actor.prototypeToken.actorLink  // Preserve actor link setting
-    }));
+      actorId: actor.id,
+      actorLink: protoToken.actorLink,
+      // Ensure actor data is preserved
+      name: protoToken.name || actor.name,
+      img: protoToken.texture?.src || actor.img
+    };
+    
+    // CRITICAL: Remove synthetic actor data that can break PF2e linking
+    delete newToken.actorData;
+    delete newToken.delta;
+    
+    newTokensData.push(newToken);
   }
   
   await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
