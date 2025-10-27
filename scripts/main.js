@@ -4,6 +4,21 @@
 
 import { FORMATION_PRESETS } from './formations.js';
 
+// ==============================================
+// CONSTANTS
+// ==============================================
+
+const MAX_PORTRAITS = 8;
+const PORTRAIT_SIZE = 32;
+const PORTRAIT_SPACING = 36;
+const NEARBY_DISTANCE_MULTIPLIER = 3;
+const SPIRAL_SEARCH_MAX_RADIUS = 20;
+const WALL_COLLISION_TEST_OFFSET = 5; // pixels from edge for collision testing
+
+// ==============================================
+// GLOBAL STATE
+// ==============================================
+
 // Global state for follow-the-leader mode
 let followLeaderMode = false;
 let leaderToken = null;
@@ -279,7 +294,7 @@ Hooks.on('getTokenContextOptions', (html, contextOptions) => {
   if (!memberData) {
     const nearbyPartyToken = canvas.tokens.placeables.find(t => {
       const dist = Math.hypot(t.x - token.x, t.y - token.y);
-      return t.document.getFlag('party-vision', 'memberData') && dist < canvas.grid.size * 3;
+      return t.document.getFlag('party-vision', 'memberData') && dist < canvas.grid.size * NEARBY_DISTANCE_MULTIPLIER;
     });
     
     if (nearbyPartyToken) {
@@ -321,9 +336,7 @@ function renderMemberPortraits(token, memberData) {
   const container = new PIXI.Container();
   container.name = 'party-vision-overlay';
   
-  const portraitSize = 32;
-  const spacing = 36;
-  const members = memberData.slice(0, 8); // Max 8 portraits
+  const members = memberData.slice(0, MAX_PORTRAITS); // Max portraits
   
   members.forEach((member, index) => {
     const actor = game.actors.get(member.actorId);
@@ -335,8 +348,8 @@ function renderMemberPortraits(token, memberData) {
     const y = Math.sin(angle) * radius;
     
     const sprite = PIXI.Sprite.from(actor.img);
-    sprite.width = portraitSize;
-    sprite.height = portraitSize;
+    sprite.width = PORTRAIT_SIZE;
+    sprite.height = PORTRAIT_SIZE;
     sprite.anchor.set(0.5);
     sprite.x = token.w / 2 + x;
     sprite.y = token.h / 2 + y;
@@ -344,7 +357,7 @@ function renderMemberPortraits(token, memberData) {
     // Add circular mask
     const mask = new PIXI.Graphics();
     mask.beginFill(0xFFFFFF);
-    mask.drawCircle(sprite.x, sprite.y, portraitSize / 2);
+    mask.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2);
     mask.endFill();
     container.addChild(mask);
     sprite.mask = mask;
@@ -352,7 +365,7 @@ function renderMemberPortraits(token, memberData) {
     // Add border
     const border = new PIXI.Graphics();
     border.lineStyle(2, 0xFFFFFF, 0.8);
-    border.drawCircle(sprite.x, sprite.y, portraitSize / 2);
+    border.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2);
     
     container.addChild(sprite);
     container.addChild(border);
@@ -459,7 +472,9 @@ async function scoutAhead(partyToken, actorId) {
   // Spawn token at party location
   const newTokenData = foundry.utils.mergeObject(tokenData, {
     x: partyToken.x,
-    y: partyToken.y
+    y: partyToken.y,
+    actorId: actor.id,  // Explicitly set actor ID
+    actorLink: actor.prototypeToken.actorLink  // Preserve actor link setting
   });
   
   await canvas.scene.createEmbeddedDocuments("Token", [newTokenData]);
@@ -602,6 +617,12 @@ Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
 // HELPER: DEPLOY PARTY FUNCTION
 // ==============================================
 
+/**
+ * Deploys the party token, spawning individual member tokens
+ * @param {Token} partyToken - The party token to deploy
+ * @param {number} radians - Direction to face (in radians)
+ * @returns {Promise<void>}
+ */
 async function deployParty(partyToken, radians) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   const gridSize = canvas.grid.size;
@@ -654,13 +675,21 @@ async function deployParty(partyToken, radians) {
   await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
 }
 
+/**
+ * Finds a valid unoccupied spot for token placement using spiral search
+ * @param {number} idealX - Ideal grid X coordinate
+ * @param {number} idealY - Ideal grid Y coordinate
+ * @param {Object} tokenData - Token data object
+ * @param {Set} assignedSpots - Set of already assigned grid positions
+ * @returns {{x: number, y: number}} Valid grid coordinates
+ */
 function findValidSpot(idealX, idealY, tokenData, assignedSpots) {
   if (isSpotValid(idealX, idealY, tokenData, assignedSpots)) {
     return { x: idealX, y: idealY };
   }
   
   // Spiral search
-  for (let r = 1; r < 20; r++) {
+  for (let r = 1; r < SPIRAL_SEARCH_MAX_RADIUS; r++) {
     for (let x = idealX - r; x <= idealX + r; x++) {
       for (let y = idealY - r; y <= idealY + r; y++) {
         if (Math.abs(x - idealX) !== r && Math.abs(y - idealY) !== r) continue;
@@ -675,6 +704,14 @@ function findValidSpot(idealX, idealY, tokenData, assignedSpots) {
   return { x: idealX, y: idealY };
 }
 
+/**
+ * Checks if a grid position is valid for token placement
+ * @param {number} gridX - Grid X coordinate to check
+ * @param {number} gridY - Grid Y coordinate to check
+ * @param {Object} tokenData - Token data object
+ * @param {Set} assignedSpots - Set of already assigned grid positions
+ * @returns {boolean} True if the spot is valid
+ */
 function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   const gridSize = canvas.grid.size;
   const finalX = gridX * gridSize;
@@ -690,11 +727,11 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   // Check for wall collisions using v13 API
   // Test multiple points around the token to ensure it doesn't pass through walls
   const testPoints = [
-    { x: centerX, y: centerY },                           // Center
-    { x: finalX + 5, y: finalY + 5 },                     // Top-left corner
-    { x: finalX + tokenWidth - 5, y: finalY + 5 },        // Top-right corner
-    { x: finalX + 5, y: finalY + tokenHeight - 5 },       // Bottom-left corner
-    { x: finalX + tokenWidth - 5, y: finalY + tokenHeight - 5 } // Bottom-right corner
+    { x: centerX, y: centerY },                                                         // Center
+    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },                     // Top-left corner
+    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },        // Top-right corner
+    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET },       // Bottom-left corner
+    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET } // Bottom-right corner
   ];
   
   for (const point of testPoints) {
