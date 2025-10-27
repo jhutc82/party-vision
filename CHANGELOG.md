@@ -5,6 +5,17 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.8] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Updated main.js deployParty function to match macro fixes from v2.0.7
+- Fixed actor UUID resolution in main deployParty helper function
+- Fixed clean token data generation in main deployParty helper function
+- Both macros AND main.js now use same actor linking logic
+
+### Note
+v2.0.7 only updated the macros but not the main.js helper function. This caused macros to call the old deployParty function which still had actor linking issues. v2.0.8 synchronizes everything.
+
 ## [2.0.7] - 2025-10-27
 
 ### Fixed
