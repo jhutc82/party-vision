@@ -5,6 +5,22 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.11] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Fixed Token HUD button error caused by `refreshToken` hook accessing settings before initialization
+  - Moved visual indicator hook registration to `ready` hook to ensure settings are registered first
+  - Fixes error: "party-vision.showMemberPortraits is not a registered game setting"
+- **Leader Memory**: Form Party now remembers which token was the leader for each party composition
+  - Leader defaults to previous selection when re-forming the same party
+  - Saved alongside party name and image in configuration
+- **Compendium**: Cleaned up duplicate macros display issue (Forge VTT caching)
+
+### Changed
+- Reorganized visual indicator functions into dedicated section for better code organization
+- Enhanced Form Party macro to track and restore leader selection
+- Updated version to 2.0.11
+
 ## [2.0.10] - 2025-10-27
 
 ### Added
