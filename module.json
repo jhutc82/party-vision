@@ -38,8 +38,7 @@
       "label": "Party Vision Macros",
       "type": "Macro",
       "path": "packs/macros.db",
-      "private": false,
-      "system": "none"
+      "private": false
     }
   ],
   "url": "https://github.com/jhutc82/party-vision",
