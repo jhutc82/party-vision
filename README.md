@@ -20,7 +20,6 @@ Party Vision solves the common problem in online TTRPGs where GMs must manually 
 - **Auto-Deploy on Combat**: Automatically separates party when combat starts
 - **Visual Member Indicators**: Shows character portraits around the party token
 - **Range Indicator**: Displays the party's spread radius
-- **Ghosted Preview**: Hover over party token to see where members would deploy (GM only)
 - **Quick Member Management**: Right-click context menu for:
   - Scout Ahead: Temporarily split one character out
   - Add to Party: Add nearby tokens
@@ -42,14 +41,14 @@ Party Vision solves the common problem in online TTRPGs where GMs must manually 
 4. Click **Install**
 
 ### Method 2: Manual Installation
-1. Download the latest release from [GitHub](https://github.com/yourusername/party-vision/releases)
+1. Download the latest release from [GitHub](https://github.com/jhutc82/party-vision/releases)
 2. Extract to your Foundry `Data/modules` folder
 3. Enable the module in your world
 
 ### Method 3: Manifest URL
 Use this manifest URL in Foundry's module installer:
 ```
-https://github.com/yourusername/party-vision/releases/latest/download/module.json
+https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.json
 ```
 
 ## Quick Start Guide
@@ -102,7 +101,6 @@ Access settings via **Configure Settings** → **Module Settings**:
 - **Auto-Deploy on Combat**: Automatically deploy party when combat starts
 - **Show Member Portraits**: Display character portraits around party token
 - **Show Range Indicator**: Display party's spread radius
-- **Show Ghosted Preview**: Show deployment preview on hover (GM only)
 
 ## Tips & Best Practices
 
@@ -143,7 +141,7 @@ Access settings via **Configure Settings** → **Module Settings**:
 
 ### Building from Source
 ```bash
-git clone https://github.com/yourusername/party-vision.git
+git clone https://github.com/jhutc82/party-vision.git
 cd party-vision
 # No build process required - pure JavaScript module
 ```
@@ -174,7 +172,7 @@ This module is licensed under the MIT License. See LICENSE file for details.
 
 ## Credits
 
-**Author**: Your Name Here
+**Author**: jhutc82
 **Module ID**: party-vision
 **Foundry VTT**: Compatible with v13+
 
@@ -184,9 +182,8 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/party-vision/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/party-vision/discussions)
-- **Discord**: Find me on the Foundry VTT Discord server
+- **Issues**: [GitHub Issues](https://github.com/jhutc82/party-vision/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jhutc82/party-vision/discussions)
 
 ---
 
