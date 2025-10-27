@@ -29,11 +29,11 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.7');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.10');
 
   // Check for libWrapper dependency
-  if (!game.modules.get('lib-wrapper')?.active) {
-    ui.notifications.error("Party Vision requires 'lib-wrapper' module to be active!");
+  if (!game.modules.get('libWrapper')?.active) {
+    ui.notifications.error("Party Vision requires 'libWrapper' module to be active!");
     return;
   }
 
@@ -87,6 +87,15 @@ Hooks.once('init', () => {
   game.settings.register('party-vision', 'savedFormations', {
     name: "Custom Formations",
     hint: "Your saved custom formations (use the UI to manage these).",
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: {}
+  });
+
+  game.settings.register('party-vision', 'savedPartyConfigs', {
+    name: "Saved Party Configurations",
+    hint: "Remembers party names and images for specific token combinations.",
     scope: 'world',
     config: false,
     type: Object,
@@ -176,8 +185,23 @@ Hooks.once('init', () => {
 // READY HOOK - Post-initialization setup
 // ==============================================
 
-Hooks.once('ready', () => {
+Hooks.once('ready', async () => {
   console.log('Party Vision | Module Ready');
+  
+  // Validate compendium on load
+  try {
+    const pack = game.packs.get("party-vision.macros");
+    if (pack) {
+      console.log('Party Vision | Compendium found:', pack.metadata.label);
+      // Try to load documents to ensure compendium is valid
+      const docs = await pack.getDocuments();
+      console.log(`Party Vision | Compendium loaded successfully: ${docs.length} macros`);
+    } else {
+      console.warn('Party Vision | Compendium not found: party-vision.macros');
+    }
+  } catch (e) {
+    console.error('Party Vision | Error loading compendium:', e);
+  }
 });
 
 // ==============================================
@@ -205,10 +229,14 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
     formButton.on('click', async () => {
       // Try to find macro in compendium first, otherwise try user macros
       let macro = null;
-      const pack = game.packs.get("party-vision.macros");
-      if (pack) {
-        const docs = await pack.getDocuments();
-        macro = docs.find(m => m.name === "Form Party");
+      try {
+        const pack = game.packs.get("party-vision.macros");
+        if (pack) {
+          const docs = await pack.getDocuments();
+          macro = docs.find(m => m.name === "Form Party");
+        }
+      } catch (e) {
+        console.warn("Party Vision: Error loading compendium", e);
       }
       
       // Fallback: check user macros
@@ -239,10 +267,14 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
     deployButton.on('click', async () => {
       // Try to find macro in compendium first, otherwise try user macros
       let macro = null;
-      const pack = game.packs.get("party-vision.macros");
-      if (pack) {
-        const docs = await pack.getDocuments();
-        macro = docs.find(m => m.name === "Deploy Party");
+      try {
+        const pack = game.packs.get("party-vision.macros");
+        if (pack) {
+          const docs = await pack.getDocuments();
+          macro = docs.find(m => m.name === "Deploy Party");
+        }
+      } catch (e) {
+        console.warn("Party Vision: Error loading compendium", e);
       }
       
       // Fallback: check user macros
