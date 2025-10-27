@@ -1,0 +1,52 @@
+{
+  "id": "party-vision",
+  "title": "Party Vision",
+  "description": "Creates a single party token that uses the individual vision of its members, with follow-the-leader mode, auto-deploy, formation presets, and visual indicators.",
+  "version": "2.0.0",
+  "authors": [
+    {
+      "name": "Your Name Here",
+      "url": "https://github.com/yourusername/party-vision"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "relationships": {
+    "dependencies": [
+      {
+        "id": "lib-wrapper",
+        "type": "module",
+        "manifest": "https://github.com/ruipin/fvtt-lib-wrapper/releases/latest/download/module.json",
+        "compatibility": {
+          "minimum": "1.12.0"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.js",
+    "scripts/formations.js"
+  ],
+  "styles": [
+    "styles/party-vision.css"
+  ],
+  "packs": [
+    {
+      "name": "macros",
+      "label": "Party Vision Macros",
+      "type": "Macro",
+      "path": "packs/macros.db",
+      "private": false,
+      "system": "none"
+    }
+  ],
+  "url": "https://github.com/yourusername/party-vision",
+  "manifest": "https://github.com/yourusername/party-vision/releases/latest/download/module.json",
+  "download": "https://github.com/yourusername/party-vision/archive/refs/tags/2.0.0.zip",
+  "license": "MIT",
+  "readme": "https://github.com/yourusername/party-vision/blob/main/README.md",
+  "bugs": "https://github.com/yourusername/party-vision/issues",
+  "changelog": "https://github.com/yourusername/party-vision/blob/main/CHANGELOG.md"
+}
