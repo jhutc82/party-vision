@@ -2,7 +2,7 @@
   "id": "party-vision",
   "title": "Party Vision",
   "description": "Creates a single party token that uses the individual vision of its members, with follow-the-leader mode, auto-deploy, formation presets, and visual indicators.",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "authors": [
     {
       "name": "jhutc82",
