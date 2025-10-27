@@ -5,6 +5,41 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.10] - 2025-10-27
+
+### Added
+- **Custom Party Name**: Form Party dialog now includes text input to customize party token name (defaults to "The Party")
+- **Custom Party Token Image**: File picker with browse button to select custom token artwork for party tokens
+- **Party Composition Memory**: Module now remembers and auto-fills party name and image based on selected token combinations
+  - Automatically pre-fills saved values when forming the same party composition again
+  - Each unique combination of tokens (by actor ID) stores its own configuration
+  - Memory persists across sessions and is stored per-world
+- New module setting `savedPartyConfigs` to store party configurations by token composition
+
+### Fixed
+- **CRITICAL**: Fixed libWrapper dependency ID - changed from `lib-wrapper` to correct camelCase `libWrapper`
+- **CRITICAL**: Fixed module initialization - module now properly detects and loads libWrapper dependency
+- Added error handling for compendium access in Token HUD buttons (wrapped in try-catch)
+- Added compendium validation in ready hook with detailed console logging
+- Fixed potential initialization errors that prevented module from loading
+
+### Changed
+- Updated Form Party macro to include name, image, and composition memory features
+- Enhanced Form Party dialog with better layout and field organization
+- Improved error messages and console logging for debugging
+- Updated version logging to v2.0.10
+
+### Technical
+- Form Party macro now generates unique key from sorted actor IDs for party composition tracking
+- Settings system extended to support party configuration storage
+- Compendium loading now includes validation and error reporting
+- Better resilience against compendium loading failures
+
+## [2.0.9] - 2025-10-27 (DEPRECATED - Not Released)
+
+### Note
+This version had the libWrapper dependency issue and was superseded by v2.0.10.
+
 ## [2.0.8] - 2025-10-27
 
 ### Fixed
