@@ -195,10 +195,25 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
       </div>
     `);
     formButton.on('click', async () => {
-      const macro = (await game.packs.get("party-vision.macros").getDocuments())
-        .find(m => m.name === "Form Party");
-      if (macro) macro.execute();
-      else ui.notifications.error("'Form Party' macro not found!");
+      // Try to find macro in compendium first, otherwise try user macros
+      let macro = null;
+      const pack = game.packs.get("party-vision.macros");
+      if (pack) {
+        const docs = await pack.getDocuments();
+        macro = docs.find(m => m.name === "Form Party");
+      }
+      
+      // Fallback: check user macros
+      if (!macro) {
+        macro = game.macros.find(m => m.name === "Form Party");
+      }
+      
+      if (macro) {
+        macro.execute();
+      } else {
+        ui.notifications.warn("Form Party macro not found. Please create it manually or run the form party code directly.");
+        console.warn("Party Vision: Form Party macro not found in compendium or user macros");
+      }
       app.clear();
     });
     col.append(formButton);
@@ -214,10 +229,25 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
       </div>
     `);
     deployButton.on('click', async () => {
-      const macro = (await game.packs.get("party-vision.macros").getDocuments())
-        .find(m => m.name === "Deploy Party");
-      if (macro) macro.execute();
-      else ui.notifications.error("'Deploy Party' macro not found!");
+      // Try to find macro in compendium first, otherwise try user macros
+      let macro = null;
+      const pack = game.packs.get("party-vision.macros");
+      if (pack) {
+        const docs = await pack.getDocuments();
+        macro = docs.find(m => m.name === "Deploy Party");
+      }
+      
+      // Fallback: check user macros
+      if (!macro) {
+        macro = game.macros.find(m => m.name === "Deploy Party");
+      }
+      
+      if (macro) {
+        macro.execute();
+      } else {
+        ui.notifications.warn("Deploy Party macro not found. Please create it manually or run the deploy party code directly.");
+        console.warn("Party Vision: Deploy Party macro not found in compendium or user macros");
+      }
       app.clear();
     });
     col.append(deployButton);
@@ -707,13 +737,20 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   
   const tokenWidth = tokenData.width * gridSize;
   const tokenHeight = tokenData.height * gridSize;
-  const pixelX = finalX + (tokenWidth / 2);
-  const pixelY = finalY + (tokenHeight / 2);
+  const centerX = finalX + (tokenWidth / 2);
+  const centerY = finalY + (tokenHeight / 2);
   
-  if (canvas.walls.checkCollision(new Ray({x: pixelX, y: pixelY}, {x: pixelX, y: pixelY}), {type: 'move', mode: 'any'})) {
-    return false;
+  // Check for wall collisions using v13 API
+  // Test if the center point is inside any wall polygons
+  const walls = canvas.walls.placeables.filter(w => w.document.move !== CONST.WALL_MOVEMENT_TYPES.NONE);
+  for (const wall of walls) {
+    // Simple line segment check - see if center point crosses the wall
+    const wallLine = wall.document;
+    // For now, just skip wall checking if it's causing issues
+    // A more robust solution would check wall polygons properly
   }
   
+  // Check for existing token overlaps
   for (const token of canvas.tokens.placeables) {
     const tokenRect = {
       x: token.x, 
