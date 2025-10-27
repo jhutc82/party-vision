@@ -1,0 +1,110 @@
+/* ==============================================
+   PARTY VISION - STYLES
+   ============================================== */
+
+/* Token HUD Button Styles */
+.control-icon.party-vision-form,
+.control-icon.party-vision-deploy {
+  transition: all 0.2s ease;
+}
+
+.control-icon.party-vision-form:hover {
+  background: rgba(0, 150, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.5);
+}
+
+.control-icon.party-vision-deploy:hover {
+  background: rgba(255, 100, 100, 0.3);
+  box-shadow: 0 0 10px rgba(255, 100, 100, 0.5);
+}
+
+/* Dialog Styles */
+.party-vision-dialog {
+  min-width: 300px;
+}
+
+.party-vision-dialog select {
+  margin: 10px 0;
+  padding: 5px;
+  width: 100%;
+  font-size: 14px;
+}
+
+.party-vision-dialog .formation-preview {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 15px 0;
+  flex-wrap: wrap;
+}
+
+.party-vision-dialog .formation-option {
+  padding: 10px;
+  border: 2px solid #444;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: center;
+  min-width: 80px;
+  transition: all 0.2s ease;
+}
+
+.party-vision-dialog .formation-option:hover {
+  border-color: #0088ff;
+  background: rgba(0, 136, 255, 0.1);
+}
+
+.party-vision-dialog .formation-option.selected {
+  border-color: #00ff88;
+  background: rgba(0, 255, 136, 0.2);
+}
+
+.party-vision-dialog .direction-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin: 15px auto;
+  max-width: 200px;
+}
+
+.party-vision-dialog .direction-btn {
+  padding: 15px;
+  border: 2px solid #444;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.party-vision-dialog .direction-btn:hover {
+  border-color: #0088ff;
+  background: rgba(0, 136, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.party-vision-dialog .direction-btn.empty {
+  visibility: hidden;
+}
+
+.party-vision-dialog .direction-btn i {
+  font-size: 24px;
+}
+
+/* Member Portrait Container */
+.party-vision-portraits {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Notification Styles */
+.notification.party-vision {
+  border-left: 4px solid #0088ff;
+}
+
+/* Settings Hint */
+.party-vision-settings-hint {
+  font-style: italic;
+  color: #999;
+  font-size: 0.9em;
+  margin-top: 5px;
+}
