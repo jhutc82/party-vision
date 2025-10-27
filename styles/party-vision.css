@@ -23,13 +23,6 @@
   min-width: 300px;
 }
 
-.party-vision-dialog select {
-  margin: 10px 0;
-  padding: 5px;
-  width: 100%;
-  font-size: 14px;
-}
-
 .party-vision-dialog .formation-preview {
   display: flex;
   justify-content: center;
@@ -84,6 +77,11 @@
 
 .party-vision-dialog .direction-btn.empty {
   visibility: hidden;
+}
+
+.party-vision-dialog .direction-btn.selected {
+  border-color: #00ff88;
+  background: rgba(0, 255, 136, 0.2);
 }
 
 .party-vision-dialog .direction-btn i {
