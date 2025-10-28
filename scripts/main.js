@@ -118,6 +118,33 @@ Hooks.once('init', () => {
     default: {}
   });
 
+  game.settings.register('party-vision', 'calculateMovement', {
+    name: "Calculate Movement Capabilities",
+    hint: "Automatically calculate party movement speed and types based on members. Disable if this causes issues with your game system.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register('party-vision', 'showMovementInfo', {
+    name: "Show Movement Info on Token",
+    hint: "Display movement speed and types on the party token nameplate.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register('party-vision', 'roundMovementSpeed', {
+    name: "Round Movement Speeds",
+    hint: "Round calculated speeds to nearest 5 for cleaner display (e.g., 32 becomes 30).",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
   // --- REGISTER KEYBINDINGS (MUST BE IN INIT HOOK) ---
   game.keybindings.register('party-vision', 'toggleFollowLeader', {
     name: "Toggle Follow-the-Leader Mode",
