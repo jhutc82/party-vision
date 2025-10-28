@@ -5,12 +5,24 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.2] - 2025-10-28
+## [2.2.0] - 2025-10-28
+
+### Added
+- **Party Lighting Synchronization**: Party tokens now automatically inherit lighting from member characters
+  - When forming a party, lighting from member tokens (torches, light spells, etc.) is aggregated and applied to the party token
+  - When a character's lighting changes (via actor sheet), all party tokens containing that character are automatically updated
+  - Uses brightest light when multiple party members have light sources
+  - When deploying a party, lighting is preserved on member tokens
+  - System-agnostic implementation works with all game systems
 
 ### Fixed
-- **PF2e Compatibility**: Added support for Pathfinder 2e v7.5+ movement data location (`system.movement.speeds`) to eliminate deprecation warning about accessing `system.attributes.speed`
-- **Locomotion Display**: Party token now properly displays movement type (walk/fly/swim/etc.) in the Token HUD instead of showing "teleport" by default
-- Movement type is automatically set based on available movement capabilities or defaults to "walk"
+- **PF2e Compatibility**: Fixed deprecation warning about accessing `system.attributes.speed` by implementing short-circuit logic that checks `system.movement.speeds` first
+- **Locomotion Display**: Party tokens now correctly display movement type (walk/fly/swim/etc.) instead of "Teleport (Displaced)"
+- **System-Agnostic Movement**: Implemented intelligent movement type recognition that works across all game systems without hardcoded mappings
+
+### Changed
+- Movement type logic now uses case-insensitive matching and defaults unknown types to "walk"
+- Unknown movement types (like PF2e's "travel") are automatically mapped to standard Foundry types
 
 ## [2.1.1] - 2025-10-28
 

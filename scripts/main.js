@@ -762,6 +762,198 @@ Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
 });
 
 // ==============================================
+// PARTY LIGHTING SYNCHRONIZATION
+// ==============================================
+
+/**
+ * Watch for lighting changes on tokens and update party tokens accordingly
+ */
+Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
+  // Only process if light properties changed
+  if (!change.light) return;
+  
+  // Get the actor ID of the updated token
+  const actorId = tokenDoc.actorId;
+  if (!actorId) return;
+  
+  // Find all party tokens that contain this actor
+  const partyTokens = canvas.tokens.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return false;
+    return memberData.some(m => m.actorId === actorId);
+  });
+  
+  // Update lighting on each party token
+  for (const partyToken of partyTokens) {
+    await updatePartyLighting(partyToken);
+  }
+});
+
+/**
+ * Watch for actor prototype token changes (e.g., when player updates their character's light in actor sheet)
+ */
+Hooks.on('updateActor', async (actor, change, options, userId) => {
+  // Only process if prototypeToken.light changed
+  if (!change.prototypeToken?.light) return;
+  
+  console.log(`Party Vision | Detected light change on actor ${actor.name}`);
+  
+  // Find all party tokens that contain this actor
+  const partyTokens = canvas.tokens.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return false;
+    return memberData.some(m => m.actorId === actor.id);
+  });
+  
+  console.log(`Party Vision | Found ${partyTokens.length} party token(s) containing ${actor.name}`);
+  
+  // Update lighting on each party token
+  for (const partyToken of partyTokens) {
+    await updatePartyLightingFromActors(partyToken);
+  }
+});
+
+/**
+ * Aggregate lights from member ACTORS (not tokens) and apply to party token
+ * Use this when members don't have active tokens on scene
+ * @param {Token} partyToken - The party token to update
+ */
+async function updatePartyLightingFromActors(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) return;
+  
+  const lights = [];
+  
+  // Collect light data from member actors' prototype tokens
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+    
+    const protoLight = actor.prototypeToken.light;
+    if (protoLight && (protoLight.bright > 0 || protoLight.dim > 0)) {
+      lights.push({
+        bright: protoLight.bright || 0,
+        dim: protoLight.dim || 0,
+        angle: protoLight.angle || 360,
+        color: protoLight.color,
+        alpha: protoLight.alpha || 0.5,
+        animation: protoLight.animation || {},
+        coloration: protoLight.coloration || 1,
+        luminosity: protoLight.luminosity || 0.5,
+        attenuation: protoLight.attenuation || 0.5,
+        contrast: protoLight.contrast || 0,
+        saturation: protoLight.saturation || 0,
+        shadows: protoLight.shadows || 0
+      });
+    }
+  }
+  
+  // Aggregate lighting
+  const aggregatedLight = aggregateLights(lights);
+  
+  // Update party token lighting
+  await partyToken.document.update({ light: aggregatedLight });
+  
+  console.log(`Party Vision | Updated party token lighting from actors: bright=${aggregatedLight.bright}, dim=${aggregatedLight.dim}`);
+}
+
+/**
+ * Aggregate lights from all member tokens and apply to party token
+ * @param {Token} partyToken - The party token to update
+ */
+async function updatePartyLighting(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) return;
+  
+  const lights = [];
+  
+  // Collect light data from all members
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+    
+    // Check for active tokens of this actor on the scene
+    const memberTokens = canvas.tokens.placeables.filter(t => 
+      t.actor?.id === member.actorId && t.id !== partyToken.id
+    );
+    
+    // If member has active tokens, use their light
+    for (const token of memberTokens) {
+      if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
+        lights.push({
+          bright: token.document.light.bright || 0,
+          dim: token.document.light.dim || 0,
+          angle: token.document.light.angle || 360,
+          color: token.document.light.color,
+          alpha: token.document.light.alpha || 0.5,
+          animation: token.document.light.animation || {},
+          coloration: token.document.light.coloration || 1,
+          luminosity: token.document.light.luminosity || 0.5,
+          attenuation: token.document.light.attenuation || 0.5,
+          contrast: token.document.light.contrast || 0,
+          saturation: token.document.light.saturation || 0,
+          shadows: token.document.light.shadows || 0
+        });
+      }
+    }
+  }
+  
+  // Aggregate lighting
+  const aggregatedLight = aggregateLights(lights);
+  
+  // Update party token lighting
+  await partyToken.document.update({ light: aggregatedLight });
+  
+  console.log(`Party Vision | Updated party token lighting: bright=${aggregatedLight.bright}, dim=${aggregatedLight.dim}`);
+}
+
+/**
+ * Aggregate multiple light sources into a single light configuration
+ * @param {Array} lights - Array of light configurations
+ * @returns {Object} Aggregated light configuration
+ */
+function aggregateLights(lights) {
+  if (lights.length === 0) {
+    // No lights - return dark configuration
+    return {
+      bright: 0,
+      dim: 0,
+      angle: 360,
+      color: null,
+      alpha: 0.5,
+      animation: {},
+      coloration: 1,
+      luminosity: 0.5,
+      attenuation: 0.5,
+      contrast: 0,
+      saturation: 0,
+      shadows: 0
+    };
+  }
+  
+  if (lights.length === 1) {
+    // Single light - return as-is
+    return lights[0];
+  }
+  
+  // Multiple lights - use the brightest
+  let brightestLight = lights[0];
+  let maxRange = lights[0].bright + lights[0].dim;
+  
+  for (let i = 1; i < lights.length; i++) {
+    const range = lights[i].bright + lights[i].dim;
+    if (range > maxRange) {
+      maxRange = range;
+      brightestLight = lights[i];
+    }
+  }
+  
+  // Use brightest light's configuration
+  // Could be enhanced to blend colors, etc., but this is a good start
+  return brightestLight;
+}
+
+// ==============================================
 // HELPER: DEPLOY PARTY FUNCTION
 // ==============================================
 
@@ -955,5 +1147,6 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
 // Export for use by macros
 window.PartyVision = {
   deployParty,
+  updatePartyLighting,
   FORMATION_PRESETS
 };
