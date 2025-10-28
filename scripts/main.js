@@ -29,7 +29,7 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.12');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.13');
 
   // Check for libWrapper dependency
   if (!game.modules.get('libWrapper')?.active) {
@@ -188,6 +188,18 @@ Hooks.once('init', () => {
 Hooks.once('ready', async () => {
   console.log('Party Vision | Module Ready');
   
+  // Verify that init hook completed successfully
+  if (!game.modules.get('libWrapper')?.active) {
+    console.error('Party Vision | libWrapper not active, module cannot function');
+    return;
+  }
+  
+  // Verify settings were registered
+  if (!game.settings.settings.has('party-vision.showHudButtons')) {
+    console.error('Party Vision | Settings not registered - init hook may have failed');
+    return;
+  }
+  
   // Validate compendium on load
   try {
     const pack = game.packs.get("party-vision.macros");
@@ -204,8 +216,11 @@ Hooks.once('ready', async () => {
   }
   
   // Register hooks after settings are ready
+  console.log('Party Vision | Registering visual indicators...');
   setupVisualIndicators();
+  console.log('Party Vision | Registering Token HUD integration...');
   setupTokenHUD();
+  console.log('Party Vision | Initialization complete');
 });
 
 // ==============================================
@@ -214,6 +229,17 @@ Hooks.once('ready', async () => {
 
 function setupTokenHUD() {
   Hooks.on('renderTokenHUD', (app, html, data) => {
+    // Safety check: ensure settings are registered before accessing
+    try {
+      if (!game.settings.settings.has('party-vision.showHudButtons')) {
+        console.warn('Party Vision | Settings not yet registered, skipping HUD setup');
+        return;
+      }
+    } catch (e) {
+      console.warn('Party Vision | Settings check failed:', e);
+      return;
+    }
+    
     if (!game.settings.get('party-vision', 'showHudButtons')) return;
     
     const canAct = game.user.isGM || game.settings.get('party-vision', 'allowPlayerActions');
@@ -308,6 +334,15 @@ function setupVisualIndicators() {
   Hooks.on('refreshToken', (token) => {
     const memberData = token.document.getFlag('party-vision', 'memberData');
     if (!memberData) return;
+    
+    // Safety check: ensure settings are registered before accessing
+    try {
+      if (!game.settings.settings.has('party-vision.showMemberPortraits')) {
+        return;
+      }
+    } catch (e) {
+      return;
+    }
     
     // Remove existing overlays
     token.children.forEach(child => {
