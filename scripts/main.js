@@ -29,7 +29,7 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.11');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.12');
 
   // Check for libWrapper dependency
   if (!game.modules.get('libWrapper')?.active) {
@@ -203,9 +203,102 @@ Hooks.once('ready', async () => {
     console.error('Party Vision | Error loading compendium:', e);
   }
   
-  // Register visual indicator hooks after settings are ready
+  // Register hooks after settings are ready
   setupVisualIndicators();
+  setupTokenHUD();
 });
+
+// ==============================================
+// TOKEN HUD SETUP
+// ==============================================
+
+function setupTokenHUD() {
+  Hooks.on('renderTokenHUD', (app, html, data) => {
+    if (!game.settings.get('party-vision', 'showHudButtons')) return;
+    
+    const canAct = game.user.isGM || game.settings.get('party-vision', 'allowPlayerActions');
+    if (!canAct) return;
+    
+    // Ensure html is a jQuery object
+    const $html = html instanceof jQuery ? html : $(html);
+    const col = $html.find('.col.left');
+    const controlled = canvas.tokens.controlled;
+    
+    // Show FORM PARTY button (multiple tokens selected)
+    if (controlled.length > 1) {
+      const formButton = $(`
+        <div class="control-icon party-vision-form" title="Form Party">
+          <i class="fas fa-users"></i>
+        </div>
+      `);
+      formButton.on('click', async () => {
+        // Try to find macro in compendium first, otherwise try user macros
+        let macro = null;
+        try {
+          const pack = game.packs.get("party-vision.macros");
+          if (pack) {
+            const docs = await pack.getDocuments();
+            macro = docs.find(m => m.name === "Form Party");
+          }
+        } catch (e) {
+          console.warn("Party Vision: Error loading compendium", e);
+        }
+        
+        // Fallback: check user macros
+        if (!macro) {
+          macro = game.macros.find(m => m.name === "Form Party");
+        }
+        
+        if (macro) {
+          macro.execute();
+        } else {
+          ui.notifications.warn("Form Party macro not found. Please create it manually or run the form party code directly.");
+          console.warn("Party Vision: Form Party macro not found in compendium or user macros");
+        }
+        app.clear();
+      });
+      col.append(formButton);
+    }
+    
+    // Show DEPLOY PARTY button (single party token selected)
+    // FIX: Check controlled token directly instead of data object
+    else if (controlled.length === 1 && 
+             controlled[0]?.document.getFlag('party-vision', 'memberData')) {
+      const deployButton = $(`
+        <div class="control-icon party-vision-deploy" title="Deploy Party">
+          <i class="fas fa-users-slash"></i>
+        </div>
+      `);
+      deployButton.on('click', async () => {
+        // Try to find macro in compendium first, otherwise try user macros
+        let macro = null;
+        try {
+          const pack = game.packs.get("party-vision.macros");
+          if (pack) {
+            const docs = await pack.getDocuments();
+            macro = docs.find(m => m.name === "Deploy Party");
+          }
+        } catch (e) {
+          console.warn("Party Vision: Error loading compendium", e);
+        }
+        
+        // Fallback: check user macros
+        if (!macro) {
+          macro = game.macros.find(m => m.name === "Deploy Party");
+        }
+        
+        if (macro) {
+          macro.execute();
+        } else {
+          ui.notifications.warn("Deploy Party macro not found. Please create it manually or run the deploy party code directly.");
+          console.warn("Party Vision: Deploy Party macro not found in compendium or user macros");
+        }
+        app.clear();
+      });
+      col.append(deployButton);
+    }
+  });
+}
 
 // ==============================================
 // VISUAL INDICATORS SETUP
@@ -232,96 +325,6 @@ function setupVisualIndicators() {
     }
   });
 }
-
-// ==============================================
-// TOKEN HUD INTEGRATION
-// ==============================================
-
-Hooks.on('renderTokenHUD', (app, html, data) => {
-  if (!game.settings.get('party-vision', 'showHudButtons')) return;
-  
-  const canAct = game.user.isGM || game.settings.get('party-vision', 'allowPlayerActions');
-  if (!canAct) return;
-  
-  // Ensure html is a jQuery object
-  const $html = html instanceof jQuery ? html : $(html);
-  const col = $html.find('.col.left');
-  const controlled = canvas.tokens.controlled;
-  
-  // Show FORM PARTY button (multiple tokens selected)
-  if (controlled.length > 1) {
-    const formButton = $(`
-      <div class="control-icon party-vision-form" title="Form Party">
-        <i class="fas fa-users"></i>
-      </div>
-    `);
-    formButton.on('click', async () => {
-      // Try to find macro in compendium first, otherwise try user macros
-      let macro = null;
-      try {
-        const pack = game.packs.get("party-vision.macros");
-        if (pack) {
-          const docs = await pack.getDocuments();
-          macro = docs.find(m => m.name === "Form Party");
-        }
-      } catch (e) {
-        console.warn("Party Vision: Error loading compendium", e);
-      }
-      
-      // Fallback: check user macros
-      if (!macro) {
-        macro = game.macros.find(m => m.name === "Form Party");
-      }
-      
-      if (macro) {
-        macro.execute();
-      } else {
-        ui.notifications.warn("Form Party macro not found. Please create it manually or run the form party code directly.");
-        console.warn("Party Vision: Form Party macro not found in compendium or user macros");
-      }
-      app.clear();
-    });
-    col.append(formButton);
-  }
-  
-  // Show DEPLOY PARTY button (single party token selected)
-  // FIX: Check controlled token directly instead of data object
-  else if (controlled.length === 1 && 
-           controlled[0]?.document.getFlag('party-vision', 'memberData')) {
-    const deployButton = $(`
-      <div class="control-icon party-vision-deploy" title="Deploy Party">
-        <i class="fas fa-users-slash"></i>
-      </div>
-    `);
-    deployButton.on('click', async () => {
-      // Try to find macro in compendium first, otherwise try user macros
-      let macro = null;
-      try {
-        const pack = game.packs.get("party-vision.macros");
-        if (pack) {
-          const docs = await pack.getDocuments();
-          macro = docs.find(m => m.name === "Deploy Party");
-        }
-      } catch (e) {
-        console.warn("Party Vision: Error loading compendium", e);
-      }
-      
-      // Fallback: check user macros
-      if (!macro) {
-        macro = game.macros.find(m => m.name === "Deploy Party");
-      }
-      
-      if (macro) {
-        macro.execute();
-      } else {
-        ui.notifications.warn("Deploy Party macro not found. Please create it manually or run the deploy party code directly.");
-        console.warn("Party Vision: Deploy Party macro not found in compendium or user macros");
-      }
-      app.clear();
-    });
-    col.append(deployButton);
-  }
-});
 
 // ==============================================
 // CONTEXT MENU FOR PARTY TOKENS
