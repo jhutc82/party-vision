@@ -814,6 +814,59 @@ Hooks.on('updateActor', async (actor, change, options, userId) => {
 });
 
 /**
+ * Watch for Active Effects (like spell effects) that modify lighting
+ * This catches PF2e Light spell and similar effects
+ */
+Hooks.on('createActiveEffect', async (effect, options, userId) => {
+  await handleActiveEffectChange(effect);
+});
+
+Hooks.on('updateActiveEffect', async (effect, change, options, userId) => {
+  await handleActiveEffectChange(effect);
+});
+
+Hooks.on('deleteActiveEffect', async (effect, options, userId) => {
+  await handleActiveEffectChange(effect);
+});
+
+/**
+ * Handle Active Effect changes that might affect lighting
+ * @param {ActiveEffect} effect - The active effect that changed
+ */
+async function handleActiveEffectChange(effect) {
+  // Get the actor this effect belongs to
+  const actor = effect.parent;
+  if (!actor || actor.documentName !== 'Actor') return;
+  
+  // Check if this effect modifies light-related properties
+  const changes = effect.changes || [];
+  const affectsLight = changes.some(change => 
+    change.key?.includes('light') || 
+    change.key?.includes('prototypeToken.light')
+  );
+  
+  if (!affectsLight) return;
+  
+  console.log(`Party Vision | Active Effect "${effect.name}" affecting light on ${actor.name}`);
+  
+  // Find all party tokens that contain this actor
+  const partyTokens = canvas.tokens.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return false;
+    return memberData.some(m => m.actorId === actor.id);
+  });
+  
+  if (partyTokens.length === 0) return;
+  
+  console.log(`Party Vision | Updating ${partyTokens.length} party token(s) for ${actor.name}'s light effect`);
+  
+  // Update lighting on each party token
+  for (const partyToken of partyTokens) {
+    await updatePartyLightingFromActors(partyToken);
+  }
+}
+
+/**
  * Aggregate lights from member ACTORS (not tokens) and apply to party token
  * Use this when members don't have active tokens on scene
  * @param {Token} partyToken - The party token to update
@@ -824,27 +877,70 @@ async function updatePartyLightingFromActors(partyToken) {
   
   const lights = [];
   
-  // Collect light data from member actors' prototype tokens
+  // Collect light data from member actors
   for (const member of memberData) {
     const actor = game.actors.get(member.actorId);
     if (!actor) continue;
     
-    const protoLight = actor.prototypeToken.light;
-    if (protoLight && (protoLight.bright > 0 || protoLight.dim > 0)) {
+    let effectiveLight = null;
+    
+    // STRATEGY 1: Check if this actor has any deployed tokens on the scene (not part of a party)
+    const deployedTokens = canvas.tokens.placeables.filter(t => 
+      t.actor?.id === actor.id && 
+      t.id !== partyToken.id &&
+      !t.document.getFlag('party-vision', 'memberData') // Not another party token
+    );
+    
+    if (deployedTokens.length > 0) {
+      // Use the first deployed token's light (they should all be the same)
+      const token = deployedTokens[0];
+      if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
+        effectiveLight = token.document.light;
+        console.log(`Party Vision | Using deployed token light for ${actor.name}`);
+      }
+    }
+    
+    // STRATEGY 2: Try to get computed token data with effects applied
+    if (!effectiveLight) {
+      try {
+        // Create a synthetic token document to compute effects
+        const tokenData = await actor.getTokenDocument();
+        if (tokenData?.light && (tokenData.light.bright > 0 || tokenData.light.dim > 0)) {
+          effectiveLight = tokenData.light;
+          console.log(`Party Vision | Using computed token data for ${actor.name}`);
+        }
+      } catch (e) {
+        // getTokenDocument might not exist or might fail
+        console.log(`Party Vision | getTokenDocument failed for ${actor.name}:`, e.message);
+      }
+    }
+    
+    // STRATEGY 3: Fall back to prototype token
+    if (!effectiveLight) {
+      effectiveLight = actor.prototypeToken.light;
+      if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {
+        console.log(`Party Vision | Using prototype token light for ${actor.name}`);
+      }
+    }
+    
+    // Check if this actor has any meaningful light
+    if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {
       lights.push({
-        bright: protoLight.bright || 0,
-        dim: protoLight.dim || 0,
-        angle: protoLight.angle || 360,
-        color: protoLight.color,
-        alpha: protoLight.alpha || 0.5,
-        animation: protoLight.animation || {},
-        coloration: protoLight.coloration || 1,
-        luminosity: protoLight.luminosity || 0.5,
-        attenuation: protoLight.attenuation || 0.5,
-        contrast: protoLight.contrast || 0,
-        saturation: protoLight.saturation || 0,
-        shadows: protoLight.shadows || 0
+        bright: effectiveLight.bright || 0,
+        dim: effectiveLight.dim || 0,
+        angle: effectiveLight.angle || 360,
+        color: effectiveLight.color,
+        alpha: effectiveLight.alpha || 0.5,
+        animation: effectiveLight.animation || {},
+        coloration: effectiveLight.coloration || 1,
+        luminosity: effectiveLight.luminosity || 0.5,
+        attenuation: effectiveLight.attenuation || 0.5,
+        contrast: effectiveLight.contrast || 0,
+        saturation: effectiveLight.saturation || 0,
+        shadows: effectiveLight.shadows || 0
       });
+      
+      console.log(`Party Vision | ${actor.name} light: bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
     }
   }
   

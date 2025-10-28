@@ -5,6 +5,14 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2025-10-28
+
+### Fixed
+- **Active Effect Lighting**: Party tokens now update immediately when spell effects (like PF2e Light spell) are applied to members already in a party
+- Added hooks for `createActiveEffect`, `updateActiveEffect`, and `deleteActiveEffect` to detect spell-based lighting changes
+- Improved light detection to check deployed tokens, computed token data with effects, and prototype tokens (in that order)
+- Fixed issue where lighting wouldn't update until party was reformed
+
 ## [2.2.0] - 2025-10-28
 
 ### Added
