@@ -5,6 +5,33 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2025-10-28
+
+### Added
+- **Module Settings for Movement**:
+  - "Calculate Movement Capabilities" - Toggle movement calculation on/off (default: enabled)
+  - "Show Movement Info on Token" - Display speed/types on token nameplate (default: enabled)
+  - "Round Movement Speeds" - Round speeds to nearest 5 for cleaner display (default: enabled)
+- **Movement Info Display**: Party token names now show movement info when enabled (e.g., "The Party [30ft, fly, swim]")
+- **Enhanced Logging**: More informative console logs for movement calculation edge cases
+
+### Changed
+- **Edge Case Handling**:
+  - Gracefully handles tokens without actors (skips with warning)
+  - Handles actors with 0 or invalid movement speeds (skips with warning)
+  - Reports how many members contributed valid movement data
+  - Better fallback when no valid speeds found
+- **QOL Improvements**:
+  - Movement types are now sorted alphabetically for consistent display
+  - Speeds can be rounded to nearest 5 (configurable)
+  - Notification shows calculation details (e.g., "calculated from 3/4 members")
+- Movement calculation now tracks `validMembers` count separate from total party size
+
+### Fixed
+- Issue where tokens without actors would cause calculation errors
+- Issue where all members having invalid speeds would cause failures
+- Movement type counting now only considers tokens with valid actors
+
 ## [2.1.0] - 2025-10-28
 
 ### Added
