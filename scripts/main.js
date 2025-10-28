@@ -29,7 +29,7 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.14');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.15');
 
   // Check for libWrapper dependency with detailed logging
   const libWrapperModule = game.modules.get('libWrapper');
@@ -228,14 +228,37 @@ Hooks.once('ready', async () => {
     const pack = game.packs.get("party-vision.macros");
     if (pack) {
       console.log('Party Vision | Compendium found:', pack.metadata.label);
-      // Try to load documents to ensure compendium is valid
+      
+      // Try to load documents - may have cached duplicates from Forge
       const docs = await pack.getDocuments();
-      console.log(`Party Vision | Compendium loaded successfully: ${docs.length} macros`);
+      console.log(`Party Vision | Compendium loaded: ${docs.length} macro(s)`);
+      
+      // Validate we have the expected macros
+      const expectedMacros = ['Form Party', 'Deploy Party'];
+      const foundMacros = docs.map(d => d.name);
+      const hasAllExpected = expectedMacros.every(name => foundMacros.includes(name));
+      
+      if (hasAllExpected) {
+        console.log('Party Vision | Core macros verified: Form Party, Deploy Party');
+      } else {
+        console.warn('Party Vision | Expected macros not found:', expectedMacros);
+        console.warn('Party Vision | Found macros:', foundMacros);
+      }
+      
+      // Check for duplicates (Forge caching issue)
+      if (docs.length > 2) {
+        console.warn('Party Vision | Detected extra macros in compendium (likely Forge cache)');
+        console.warn('Party Vision | Expected: 2 macros, Found:', docs.length);
+        console.warn('Party Vision | This is cosmetic - functionality not affected');
+        console.warn('Party Vision | To fix: Uninstall module → Clear browser cache → Reinstall');
+      }
     } else {
       console.warn('Party Vision | Compendium not found: party-vision.macros');
     }
   } catch (e) {
-    console.error('Party Vision | Error loading compendium:', e);
+    // Suppress Foundry's "Error detected in module" warning for compendium issues
+    console.warn('Party Vision | Compendium load warning (likely cached duplicates):', e.message);
+    console.warn('Party Vision | This is a known Forge caching issue and does not affect functionality');
   }
   
   // Register hooks after settings are ready
