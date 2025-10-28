@@ -5,6 +5,94 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-10-28
+
+### Added
+- **Movement Capability Calculations**: Party tokens now calculate and store the movement capabilities of all members
+  - Tracks the slowest movement speed among all party members
+  - Identifies movement types (fly, swim, burrow, etc.) that ALL party members share
+  - Stores movement data in party token flags for future use
+- **Enhanced Vision System**: Party token now properly respects walls and vision limitations
+  - Each player only sees through their own character's vision when viewing the party token
+  - Vision is calculated from the party token's position using each player's individual character vision settings
+  - Players without darkvision see darkness, while players with darkvision see in the dark
+- **Movement Speed Display**: Formation notifications now include movement speed and available movement types
+
+### Changed
+- Party tokens now have `sight.enabled: true` to properly respect wall boundaries
+- Movement data is now stored in `flags.party-vision.movement` with `speed`, `types`, and `units` properties
+- Form Party macro now analyzes all member tokens to determine shared movement capabilities
+
+### Technical Details
+- Movement data extraction supports multiple game systems by checking common data paths
+- Movement types are only included if ALL party members possess that movement capability
+- Slowest speed is used to prevent the party from moving faster than its slowest member
+
+### Fixed
+- Party tokens now respect wall boundaries and cannot see or move through walls
+- Vision calculations now properly use individual player character vision from the party token position
+
+## [2.0.15] - 2025-10-27
+
+### Fixed
+- Improved compendium error handling to suppress Forge caching warnings
+- Added validation to confirm core macros (Form Party, Deploy Party) are present
+- Better error messages that clarify cache issues don't affect functionality
+
+### Added
+- Compendium duplicate detection
+  - Warns when more than 2 macros found (indicates Forge cache issue)
+  - Confirms core functionality is not affected
+  - Provides clear resolution steps
+- Enhanced compendium validation logging
+  - Shows macro count on load
+  - Verifies expected macros are present
+  - Identifies cached duplicates
+
+### Changed
+- Compendium error handling now uses console.warn instead of console.error
+- More informative messages about Forge caching behavior
+- Updated version to 2.0.15
+
+### Notes
+**Forge Cache Issue**: If you see "3 macros" or duplicate macros in compendium:
+- This is cosmetic only - functionality works correctly
+- Caused by Forge's aggressive compendium caching
+- The actual compendium file contains only 2 macros
+- To clear: Uninstall module → Clear browser cache → Reinstall
+
+**Verification**: After clearing cache, console should show "Compendium loaded: 2 macro(s)"
+
+## [2.0.14] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Improved libWrapper detection in init hook
+  - Now checks for `libWrapper` API availability instead of module active flag
+  - Fixes false negative where libWrapper shows active but isn't detected by module
+  - More reliable detection method: `typeof libWrapper !== 'undefined'`
+  
+### Added
+- Enhanced diagnostic logging in init hook:
+  - Logs libWrapper module object details
+  - Shows both active flag and API availability
+  - Confirms settings registration count
+  - Tracks successful init completion
+- Improved error messages in ready hook:
+  - Clearer explanation when init fails
+  - Lists common causes of initialization failure
+  - User notification when module cannot initialize
+
+### Changed
+- Removed redundant libWrapper check from ready hook (only check settings)
+- Better structured console output for troubleshooting
+- Updated version to 2.0.14
+
+### Technical Details
+The init hook now uses `typeof libWrapper !== 'undefined'` instead of `game.modules.get('libWrapper')?.active`. The API check is more reliable because:
+1. Module can show as "active" in UI before API is available
+2. API check directly verifies usability
+3. Eliminates timing-related false negatives
+
 ## [2.0.13] - 2025-10-27
 
 ### Fixed
