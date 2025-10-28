@@ -5,6 +5,29 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.13] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Added defensive checks for settings registration in hook handlers
+  - Token HUD and visual indicator hooks now verify settings exist before accessing
+  - Prevents race condition where hooks fire before settings fully initialized
+  - Added explicit verification in ready hook that init completed successfully
+  - Fixes persistent "is not a registered game setting" errors
+  
+### Added
+- Enhanced logging in ready hook to track initialization progress
+- Settings existence checks before hook registration
+- libWrapper verification in ready hook as safety measure
+
+### Changed
+- More robust initialization sequence with explicit verification steps
+- Updated version to 2.0.13
+
+### Notes
+- This version adds multiple layers of defense against timing issues
+- If still seeing errors, check console for "Settings not registered" warnings
+- Indicates either cache issue or init hook failure
+
 ## [2.0.12] - 2025-10-27
 
 ### Fixed
