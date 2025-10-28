@@ -5,6 +5,33 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.12] - 2025-10-27
+
+### Fixed
+- **CRITICAL**: Fixed Token HUD button error caused by `renderTokenHUD` hook accessing settings before initialization
+  - Created `setupTokenHUD()` function and moved hook registration to `ready` hook
+  - Fixes error: "party-vision.showHudButtons is not a registered game setting"
+- **Leader Label**: Fixed "(Previous Leader)" showing incorrectly on first party formation
+  - Now only displays when there's actually saved configuration data for the party composition
+  - First formation shows "(First Selected)" for the default leader
+  - Subsequent formations correctly show "(Previous Leader)" for the saved leader
+- **Debug Logging**: Added comprehensive console logging for party configuration save/load
+  - Logs party composition key, saved configs, and save/load operations
+  - Helps diagnose issues with party name, image, and leader persistence
+
+### Changed
+- Enhanced leader selection logic to properly detect when saved configuration exists
+- Improved error messages with console.error instead of console.warn for save failures
+- Updated version to 2.0.12
+
+### Notes
+- **Compendium Duplicates**: Still a Forge VTT caching issue - the compendium file contains exactly 2 macros (verified)
+  - Clean installation (uninstall → clear cache → reinstall) resolves duplicate display
+- **Party Config Not Saving**: If name/image still not persisting after this update:
+  - Check browser console for save/load logs
+  - Verify settings permission in world
+  - Try as GM to rule out permission issues
+
 ## [2.0.11] - 2025-10-27
 
 ### Fixed
