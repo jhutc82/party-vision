@@ -29,15 +29,31 @@ let followerOffsets = new Map();
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.13');
+  console.log('Party Vision | Initializing Enhanced Module v2.0.14');
 
-  // Check for libWrapper dependency
-  if (!game.modules.get('libWrapper')?.active) {
+  // Check for libWrapper dependency with detailed logging
+  const libWrapperModule = game.modules.get('libWrapper');
+  console.log('Party Vision | libWrapper module object:', libWrapperModule);
+  console.log('Party Vision | libWrapper active?:', libWrapperModule?.active);
+  
+  // Check if libWrapper API is available (more reliable than checking active flag)
+  const hasLibWrapper = typeof libWrapper !== 'undefined';
+  console.log('Party Vision | libWrapper API available?:', hasLibWrapper);
+  
+  if (!hasLibWrapper) {
+    console.error('Party Vision | libWrapper API not found!');
     ui.notifications.error("Party Vision requires 'libWrapper' module to be active!");
+    console.error('Party Vision | Make sure libWrapper is:');
+    console.error('  1. Installed');
+    console.error('  2. Activated in module settings'); 
+    console.error('  3. Loaded BEFORE Party Vision');
     return;
   }
+  
+  console.log('Party Vision | libWrapper detected, proceeding with initialization');
 
   // --- REGISTER MODULE SETTINGS ---
+  console.log('Party Vision | Registering module settings...');
   
   game.settings.register('party-vision', 'showHudButtons', {
     name: "Show HUD Buttons",
@@ -179,6 +195,11 @@ Hooks.once('init', () => {
       actor.sheet.render(true);
     }
   }, 'MIXED');
+  
+  console.log('Party Vision | Init hook completed successfully');
+  console.log('Party Vision | Settings registered: 6');
+  console.log('Party Vision | Keybindings registered: 1');
+  console.log('Party Vision | libWrapper hooks registered: 2');
 });
 
 // ==============================================
@@ -188,17 +209,19 @@ Hooks.once('init', () => {
 Hooks.once('ready', async () => {
   console.log('Party Vision | Module Ready');
   
-  // Verify that init hook completed successfully
-  if (!game.modules.get('libWrapper')?.active) {
-    console.error('Party Vision | libWrapper not active, module cannot function');
+  // Verify that init hook completed successfully by checking if settings were registered
+  if (!game.settings.settings.has('party-vision.showHudButtons')) {
+    console.error('Party Vision | Settings not registered!');
+    console.error('Party Vision | This means the init hook failed. Common causes:');
+    console.error('  1. libWrapper module not loaded before Party Vision');
+    console.error('  2. Init hook error that prevented settings registration');
+    console.error('  3. Module load order issue');
+    console.error('Party Vision | Check console for errors during init phase');
+    ui.notifications.error('Party Vision: Initialization failed - check console for details');
     return;
   }
   
-  // Verify settings were registered
-  if (!game.settings.settings.has('party-vision.showHudButtons')) {
-    console.error('Party Vision | Settings not registered - init hook may have failed');
-    return;
-  }
+  console.log('Party Vision | Settings verified successfully');
   
   // Validate compendium on load
   try {
