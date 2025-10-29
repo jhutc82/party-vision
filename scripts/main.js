@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.0.15');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.4');
 
   // Check for libWrapper dependency with detailed logging
   const libWrapperModule = game.modules.get('libWrapper');
@@ -160,9 +160,9 @@ Hooks.once('init', () => {
     }
   });
 
-  // --- REGISTER VISION HOOK (FIX: detectionModes from prototypeToken) ---
+  // --- REGISTER VISION HOOK (FIX: Use v13 method name initializeVisionSource) ---
   
-  libWrapper.register('party-vision', 'Token.prototype.updateVisionSource', function(wrapped, ...args) {
+  libWrapper.register('party-vision', 'Token.prototype.initializeVisionSource', function(wrapped, ...args) {
     const partyToken = this;
     const memberData = partyToken.document.getFlag("party-vision", "memberData");
     
@@ -298,6 +298,53 @@ Hooks.once('ready', async () => {
   console.log('Party Vision | Registering Token HUD integration...');
   setupTokenHUD();
   console.log('Party Vision | Initialization complete');
+});
+
+// ==============================================
+// CANVAS READY HOOK - Refresh vision for existing party tokens
+// ==============================================
+
+Hooks.on('canvasReady', () => {
+  // This hook ensures that party token vision is refreshed when:
+  // 1. A player logs in and the canvas loads
+  // 2. The scene changes
+  // 3. The canvas is re-rendered
+  
+  // Only refresh if the user has a character assigned
+  if (!game.user.character) {
+    console.log('Party Vision | Canvas ready but no character assigned to user');
+    return;
+  }
+  
+  console.log('Party Vision | Canvas ready - refreshing vision for party tokens');
+  
+  // Find all party tokens on the current scene
+  const partyTokens = canvas.tokens.placeables.filter(token => {
+    const memberData = token.document.getFlag('party-vision', 'memberData');
+    return memberData && memberData.length > 0;
+  });
+  
+  if (partyTokens.length === 0) {
+    console.log('Party Vision | No party tokens found on scene');
+    return;
+  }
+  
+  console.log(`Party Vision | Found ${partyTokens.length} party token(s), checking if user is a member`);
+  
+  // Refresh vision sources for party tokens that include this user's character
+  for (const partyToken of partyTokens) {
+    const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+    const userActorId = game.user.character.id;
+    const isMember = memberData.some(m => m.actorId === userActorId);
+    
+    if (isMember) {
+      console.log(`Party Vision | User's character is in party token "${partyToken.name}" - refreshing vision`);
+      
+      // Force re-initialization of vision source
+      // This will trigger our libWrapper hook with the correct user character
+      partyToken.initializeVisionSource({ deleted: false });
+    }
+  }
 });
 
 // ==============================================

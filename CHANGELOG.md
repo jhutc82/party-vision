@@ -5,6 +5,28 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2025-10-29
+
+### Fixed
+- **Player Login Vision Refresh**: Added `canvasReady` hook to refresh party token vision when players log in after party token creation. This ensures players who join after a party is formed will immediately see with their character's vision (e.g., darkvision) without needing to refresh or re-select tokens.
+
+### Added
+- Automatic vision source refresh for party tokens when canvas becomes ready
+- Console logging to track vision refresh for debugging
+
+### Technical
+- Party tokens now call `initializeVisionSource()` when canvas is ready if the current user's character is a member
+- Prevents timing issues where `game.user.character` wasn't available during initial token initialization
+
+## [2.2.3] - 2025-10-29
+
+### Fixed
+- **Critical: Foundry v13 API Compatibility**: Fixed vision hook to use correct `Token.prototype.initializeVisionSource` method instead of deprecated `updateVisionSource` method. This resolves the libWrapper error: "Can't wrap 'Token.prototype.updateVisionSource', target does not exist or could not be found."
+- Players can now properly see through party tokens with their character's individual vision settings (darkvision, etc.)
+
+### Changed
+- Updated vision hook registration to use Foundry v13 API method naming convention
+
 ## [2.2.2] - 2025-10-29
 
 ### Fixed
