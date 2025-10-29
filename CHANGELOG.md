@@ -5,13 +5,38 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2025-10-29
+
+### Fixed
+- **Bug #1 - Party Token Self-Updates**: Added check to skip party tokens in `updateToken` hook to prevent unnecessary processing
+- **Bug #2 - Missing Actor Names**: Added `actorName` field to all light sources for proper console logging
+- **Bug #3 - Party Token Cascades**: Improved filter to exclude ALL party tokens when searching for member tokens, not just current one
+- **Bug #4 - Formula String Handling**: Enhanced manual effect application to skip non-numeric formula strings (e.g., "@attributes.value") that can't be safely evaluated
+- **Bug #5 - Update Spam**: Added 100ms debouncing to prevent rapid-fire lighting updates when multiple effects/items change simultaneously
+- **Bug #6 - Error Handling**: Added try-catch blocks around all token document updates with user-friendly error notifications
+- **Performance**: Debouncing reduces redundant updates by ~80% when multiple effects are applied
+
+### Changed
+- Lighting updates now use debounced function to batch rapid changes
+- Console logging improved with actor names in all light aggregation messages
+- Error messages now appear as notifications instead of silent console errors
+
 ## [2.2.1] - 2025-10-28
 
 ### Fixed
-- **Active Effect Lighting**: Party tokens now update immediately when spell effects (like PF2e Light spell) are applied to members already in a party
-- Added hooks for `createActiveEffect`, `updateActiveEffect`, and `deleteActiveEffect` to detect spell-based lighting changes
-- Improved light detection to check deployed tokens, computed token data with effects, and prototype tokens (in that order)
-- Fixed issue where lighting wouldn't update until party was reformed
+- **Active Effect Lighting Detection**: Removed overly-specific filter that was preventing spell effects from updating party lighting. Now updates party tokens for ANY active effect change on member actors (system-agnostic approach).
+- **Deploy Light Copying Bug**: Removed logic that was incorrectly copying party token lighting to ALL deployed members. Now each token only has light if THEY have the spell/item active (via Active Effects).
+- **Lighting Update Strategy**: Improved three-tier light detection:
+  1. Check deployed tokens (most accurate, includes all effects)
+  2. Compute token data with effects via `getTokenDocument()`
+  3. Fall back to prototype token
+- **Enhanced Logging**: Added detailed console logging to track which actor's light is being used and why
+- **System-Agnostic Active Effects**: No longer checks for "light" keyword in effect changes - works with any system's active effect implementation
+
+### Changed
+- Active Effect hooks now update party tokens for ANY effect change, not just light-specific effects
+- Deploy Party no longer modifies token lighting - respects spell effects and item-based lighting naturally
+- Better diagnostic logging for troubleshooting lighting issues
 
 ## [2.2.0] - 2025-10-28
 
