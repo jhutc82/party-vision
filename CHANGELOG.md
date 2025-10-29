@@ -5,6 +5,86 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.14] - 2025-10-29
+
+### Fixed
+- **CRITICAL - PF2e Party Actor Crash**: Fixed error when actors are members of PF2e Party actors
+  - Error: `Cannot read properties of undefined (reading 'value')` in PF2e Party data preparation
+  - **Root Cause**: Calling `actor.reset()` on actors linked to PF2e Party actors caused PF2e system to crash
+  - **Solution**: Check actor type before calling reset(); skip 'party' type actors; wrap in try-catch
+  - Wrapped all actor data preparation calls (prepareData, prepareEmbeddedDocuments, prepareDerivedData) in try-catch
+  - Errors in data preparation are now logged as warnings but don't prevent lighting detection
+  - Console will show: `Skipping reset() for Party-type actor (not safe)` when applicable
+  
+### Changed
+- All actor preparation methods now have individual try-catch blocks for maximum resilience
+- Preparation failures are logged as warnings (`console.warn`) rather than errors
+- Module continues to function even if some preparation steps fail
+- Better error messages explain which preparation step failed and why
+
+### Technical
+- `actor.reset()` is now only called for non-Party actor types
+- Each preparation method (prepareData, prepareEmbeddedDocuments, prepareDerivedData) has its own try-catch
+- Errors are non-critical and won't stop lighting detection
+- This fix ensures compatibility with PF2e's Party actor system
+
+## [2.2.13] - 2025-10-29
+
+### Fixed
+- **CRITICAL - Initial Lighting Detection**: Party token now lights up immediately when party members first light a torch or light source
+  - Increased processing delay from 50ms to 200ms to allow game systems more time to process item changes
+  - Added `actor.reset()` call to clear cached data before reading lighting state
+  - Enhanced item inspection to check multiple equipped/activated properties
+  - **Before**: Light a torch → no light on party token (had to deploy/reform to sync)
+  - **After**: Light a torch → party token lights up within 400ms
+  
+- **CRITICAL - Multiple Light Sources**: Party token now correctly maintains lighting when one of multiple light sources is extinguished
+  - Improved active effect detection to properly find spell-based lighting (Light cantrip, etc.)
+  - Enhanced logging shows exactly which actors have light and which strategy detected it
+  - **Before**: Valeros (torch) + Ezren (Light spell) → extinguish Valeros → party goes completely dark
+  - **After**: Valeros (torch) + Ezren (Light spell) → extinguish Valeros → party uses Ezren's light
+  
+### Changed
+- **Enhanced Logging**: Comprehensive console logging now shows:
+  - Per-actor section headers for easy troubleshooting
+  - Each strategy attempted and its result
+  - Which items/effects were found and their light values
+  - Final summary of all light sources collected
+  - Clear indicators (✓, ✅, ❌) for success/failure states
+- **Timing Adjustments**:
+  - Processing delay: 50ms → 200ms (allows systems to complete item/effect processing)
+  - Debounce delay: 100ms → 200ms (matches processing delay)
+  - Total update time: ~150ms → ~400ms (still imperceptible to users)
+- **Strategy Improvements**:
+  - Strategy 1 (Deployed Tokens): Added logging for found-but-no-light cases
+  - Strategy 2 (Computed Token): Better result logging, shows light values even when zero
+  - Strategy 2.5 (Active Effects): Comprehensive effect scanning with per-effect logging
+  - Strategy 3 (Item Inspection): Checks more equipped states (worn, held, activated, quantity)
+  - Strategy 4 (Prototype Token): Improved logging consistency
+
+### Technical
+- Item inspection now checks: equipped, equipped.value, equipped.invested, equipped.handsHeld, equipped.carryType, activated, active, quantity
+- Active effect detection reports effect names and which properties they modify
+- All strategies now log their results regardless of success/failure
+- Final collection summary shows total light count and per-actor breakdown
+- Added actor.reset() to ensure cached data doesn't interfere with fresh reads
+
+### Debugging
+These console logs will help diagnose any remaining issues:
+```
+Party Vision | ===== Checking lighting for 5 party members =====
+Party Vision | --- Checking Valeros ---
+Party Vision | Valeros: Strategy 1 (Deployed Token) - no deployed tokens found
+Party Vision | Valeros: Strategy 2 (Computed Token) - bright=0, dim=0
+Party Vision | Valeros: Strategy 2.5 (Active Effects) - checking 0 effects
+Party Vision | Valeros: Strategy 3 (Item Inspection) - scanning 15 items
+Party Vision | Valeros: Item "Torch" - equipped=true, activated=true, hasLight=true, bright=20, dim=40
+Party Vision | Valeros: ✓ Strategy 3 (Item "Torch") found light - bright=20, dim=40
+Party Vision | Valeros: ✅ ADDED TO LIGHTS ARRAY (bright=20, dim=40)
+Party Vision | ===== LIGHT COLLECTION COMPLETE: Found 1 light source(s) =====
+Party Vision |   - Valeros: bright=20, dim=40
+```
+
 ## [2.2.12] - 2025-10-29
 
 ### Fixed

@@ -26,14 +26,14 @@ let followerOffsets = new Map();
 
 // Debouncing for party lighting updates
 const pendingLightingUpdates = new Map(); // Map<partyTokenId, timeoutId>
-const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
+const LIGHTING_UPDATE_DEBOUNCE_MS = 200; // Wait 200ms before actually updating (matches processing delay)
 
 // ==============================================
 // INITIALIZATION
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.12');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.14');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -1284,21 +1284,38 @@ async function updatePartyLightingFromActors(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   if (!memberData) return;
   
-  // CRITICAL FIX: Add small delay to ensure actor/effect data is fully processed
-  // This handles the case where lighting changes trigger hooks before the actor's
-  // derived data (including light calculations) has been updated
-  await new Promise(resolve => setTimeout(resolve, 50));
+  // CRITICAL FIX: Increase delay to 200ms to ensure actor/effect data is fully processed
+  // Game systems need time to process item changes, apply effects, and update derived data
+  // 50ms was too short for some systems to complete their processing
+  await new Promise(resolve => setTimeout(resolve, 200));
   
   const lights = [];
   
-  console.log(`Party Vision | Checking lighting for ${memberData.length} party members`);
+  console.log(`Party Vision | ===== Checking lighting for ${memberData.length} party members =====`);
   
   // Collect light data from member actors
   for (const member of memberData) {
     const actor = game.actors.get(member.actorId);
     if (!actor) continue;
     
+    console.log(`Party Vision | --- Checking ${actor.name} ---`);
+    
     let effectiveLight = null;
+    
+    // CRITICAL FIX: Reset actor data, but wrap in try-catch to handle PF2e Party actor issues
+    // Some actor types (like PF2e Party actors) crash when reset() is called
+    try {
+      // Only reset if it's a safe actor type (not Party type)
+      if (actor.type !== 'party' && actor.reset) {
+        actor.reset(); // Clear cached data
+        console.log(`Party Vision | ${actor.name}: Reset actor data cache`);
+      } else if (actor.type === 'party') {
+        console.log(`Party Vision | ${actor.name}: Skipping reset() for Party-type actor (not safe)`);
+      }
+    } catch (e) {
+      console.warn(`Party Vision | ${actor.name}: actor.reset() failed (non-critical): ${e.message}`);
+      // Continue anyway - this is not critical for lighting detection
+    }
     
     // STRATEGY 1: Check if this actor has any deployed tokens on the scene (not part of a party)
     const deployedTokens = canvas.tokens.placeables.filter(t => 
@@ -1312,27 +1329,42 @@ async function updatePartyLightingFromActors(partyToken) {
       const token = deployedTokens[0];
       if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
         effectiveLight = token.document.light;
-        console.log(`Party Vision | ${actor.name}: Using deployed token light (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+        console.log(`Party Vision | ${actor.name}: ✓ Strategy 1 (Deployed Token) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
+      } else {
+        console.log(`Party Vision | ${actor.name}: Strategy 1 (Deployed Token) - token exists but no light`);
       }
+    } else {
+      console.log(`Party Vision | ${actor.name}: Strategy 1 (Deployed Token) - no deployed tokens found`);
     }
     
     // STRATEGY 2: Try to get computed token data with effects applied
     if (!effectiveLight) {
       try {
-        // CRITICAL FIX: Force full actor data preparation before reading light data
-        // This ensures all active effects and item states are properly applied
-        if (actor.prepareData) {
-          actor.prepareData();
+        // Force full actor data preparation (wrapped in try-catch for safety)
+        try {
+          if (actor.prepareData) {
+            actor.prepareData();
+          }
+        } catch (e) {
+          console.warn(`Party Vision | ${actor.name}: prepareData() failed (non-critical): ${e.message}`);
         }
         
-        // For v13+ also prepare embedded documents (items, effects)
-        if (actor.prepareEmbeddedDocuments) {
-          actor.prepareEmbeddedDocuments();
+        try {
+          // For v13+ also prepare embedded documents (items, effects)
+          if (actor.prepareEmbeddedDocuments) {
+            actor.prepareEmbeddedDocuments();
+          }
+        } catch (e) {
+          console.warn(`Party Vision | ${actor.name}: prepareEmbeddedDocuments() failed (non-critical): ${e.message}`);
         }
         
-        // Additional preparation for systems that compute derived data
-        if (actor.prepareDerivedData) {
-          actor.prepareDerivedData();
+        try {
+          // Additional preparation for systems that compute derived data
+          if (actor.prepareDerivedData) {
+            actor.prepareDerivedData();
+          }
+        } catch (e) {
+          console.warn(`Party Vision | ${actor.name}: prepareDerivedData() failed (non-critical): ${e.message}`);
         }
         
         // Try multiple methods to get effective token data
@@ -1341,43 +1373,38 @@ async function updatePartyLightingFromActors(partyToken) {
         // Method A: getTokenDocument (most systems)
         if (typeof actor.getTokenDocument === 'function') {
           tokenDoc = await actor.getTokenDocument();
-          console.log(`Party Vision | ${actor.name}: getTokenDocument() returned:`, {
-            hasLight: !!tokenDoc?.light,
-            bright: tokenDoc?.light?.bright,
-            dim: tokenDoc?.light?.dim
-          });
         }
         // Method B: Create synthetic token (PF2e and other systems)
         else if (typeof actor.getTokenData === 'function') {
           tokenDoc = actor.getTokenData();
-          console.log(`Party Vision | ${actor.name}: getTokenData() returned:`, {
-            hasLight: !!tokenDoc?.light,
-            bright: tokenDoc?.light?.bright,
-            dim: tokenDoc?.light?.dim
-          });
         }
         // Method C: Direct prototype access after data prep (fallback)
         else if (actor.prototypeToken) {
           tokenDoc = actor.prototypeToken;
-          console.log(`Party Vision | ${actor.name}: Using prototypeToken directly:`, {
-            hasLight: !!tokenDoc?.light,
-            bright: tokenDoc?.light?.bright,
-            dim: tokenDoc?.light?.dim
-          });
         }
         
-        if (tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0)) {
+        // Log what we found
+        const hasLight = tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0);
+        console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) - bright=${tokenDoc?.light?.bright || 0}, dim=${tokenDoc?.light?.dim || 0}`);
+        
+        if (hasLight) {
           effectiveLight = tokenDoc.light;
-          console.log(`Party Vision | ${actor.name}: ✓ Using computed token data (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+          console.log(`Party Vision | ${actor.name}: ✓ Strategy 2 (Computed Token) found meaningful light`);
+        } else {
+          console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) - no meaningful light found`);
         }
       } catch (e) {
-        console.log(`Party Vision | ${actor.name}: getTokenDocument failed:`, e.message);
+        console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) failed - ${e.message}`);
       }
     }
     
     // STRATEGY 2.5: Manually apply active effects to prototype token
     if (!effectiveLight) {
       try {
+        const effects = actor.effects || [];
+        const effectCount = effects.size || effects.length || 0;
+        console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - checking ${effectCount} effects`);
+        
         // Start with prototype token light
         let computedLight = foundry.utils.deepClone(actor.prototypeToken?.light || {
           bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
@@ -1386,7 +1413,6 @@ async function updatePartyLightingFromActors(partyToken) {
         });
         
         // Apply all active effects that modify light
-        const effects = actor.effects || [];
         let hasEffectLight = false;
         
         for (const effect of effects) {
@@ -1401,7 +1427,7 @@ async function updatePartyLightingFromActors(partyToken) {
               const lightProp = parts[parts.length - 1]; // e.g., 'bright', 'dim', 'color'
               const value = change.value;
               
-              console.log(`Party Vision | ${actor.name}: Applying effect "${effect.name}" - ${lightProp} = ${value}`);
+              console.log(`Party Vision | ${actor.name}: Effect "${effect.name}" modifies ${key} = ${value}`);
               
               // Parse value if it's a string (might be a formula or number string)
               let parsedValue = value;
@@ -1421,6 +1447,7 @@ async function updatePartyLightingFromActors(partyToken) {
               if (lightProp && computedLight) {
                 computedLight[lightProp] = parsedValue;
                 hasEffectLight = true;
+                console.log(`Party Vision | ${actor.name}: Applied ${lightProp} = ${parsedValue}`);
               }
             }
           }
@@ -1428,26 +1455,53 @@ async function updatePartyLightingFromActors(partyToken) {
         
         if (hasEffectLight && (computedLight.bright > 0 || computedLight.dim > 0)) {
           effectiveLight = computedLight;
-          console.log(`Party Vision | ${actor.name}: ✓ Using prototype + manual effect application (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+          console.log(`Party Vision | ${actor.name}: ✓ Strategy 2.5 (Active Effects) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
+        } else if (hasEffectLight) {
+          console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - effects found but no meaningful light (bright=${computedLight.bright}, dim=${computedLight.dim})`);
+        } else {
+          console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - no light-modifying effects`);
         }
       } catch (e) {
-        console.log(`Party Vision | ${actor.name}: Manual effect application failed:`, e.message);
+        console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) failed - ${e.message}`);
       }
     }
     
     // STRATEGY 3: Check for system-specific light-emitting items (PF2e torches, etc.)
     if (!effectiveLight) {
       try {
-        // Look for equipped items that emit light
         const items = actor.items || [];
+        const itemCount = items.size || items.length || 0;
+        console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) - scanning ${itemCount} items`);
+        
         for (const item of items) {
-          // Check if item is equipped and has light data
-          const isEquipped = item.system?.equipped || item.system?.equipped?.value || 
-                           item.system?.equipped?.invested || item.system?.equipped?.handsHeld > 0;
+          // Check multiple equipped/active states (different systems use different properties)
+          const equippedChecks = {
+            basic: item.system?.equipped,
+            value: item.system?.equipped?.value,
+            invested: item.system?.equipped?.invested,
+            handsHeld: item.system?.equipped?.handsHeld > 0,
+            worn: item.system?.equipped?.carryType === "worn",
+            held: item.system?.equipped?.carryType === "held"
+          };
           
-          if (isEquipped && item.system?.light) {
+          const activationChecks = {
+            activated: item.system?.activated,
+            active: item.system?.active,
+            quantity: (item.system?.quantity || item.system?.quantity?.value) > 0
+          };
+          
+          const isEquipped = Object.values(equippedChecks).some(v => v);
+          const isActivated = Object.values(activationChecks).some(v => v);
+          
+          // If item has light properties, log it even if not equipped/activated
+          if (item.system?.light) {
             const itemLight = item.system.light;
-            if (itemLight.bright > 0 || itemLight.dim > 0) {
+            const hasLight = (itemLight.bright > 0 || itemLight.dim > 0);
+            
+            console.log(`Party Vision | ${actor.name}: Item "${item.name}" - equipped=${isEquipped}, activated=${isActivated}, hasLight=${hasLight}, bright=${itemLight.bright || 0}, dim=${itemLight.dim || 0}`);
+            
+            // Use it if equipped/activated AND has meaningful light
+            if ((isEquipped || isActivated) && hasLight) {
               effectiveLight = {
                 bright: itemLight.bright || 0,
                 dim: itemLight.dim || 0,
@@ -1462,25 +1516,32 @@ async function updatePartyLightingFromActors(partyToken) {
                 saturation: itemLight.saturation || 0,
                 shadows: itemLight.shadows || 0
               };
-              console.log(`Party Vision | ${actor.name}: ✓ Found equipped light-emitting item "${item.name}" (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+              console.log(`Party Vision | ${actor.name}: ✓ Strategy 3 (Item "${item.name}") found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
               break; // Use first light-emitting item found
             }
           }
         }
+        
+        if (!effectiveLight) {
+          console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) - no active light-emitting items`);
+        }
       } catch (e) {
-        console.log(`Party Vision | ${actor.name}: Item light check failed:`, e.message);
+        console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) failed - ${e.message}`);
       }
     }
     
     // STRATEGY 4: Fall back to prototype token (base case)
     if (!effectiveLight) {
-      effectiveLight = actor.prototypeToken?.light;
-      if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {
-        console.log(`Party Vision | ${actor.name}: Using prototype token light (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+      const protoLight = actor.prototypeToken?.light;
+      if (protoLight && (protoLight.bright > 0 || protoLight.dim > 0)) {
+        effectiveLight = protoLight;
+        console.log(`Party Vision | ${actor.name}: ✓ Strategy 4 (Prototype Token) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
+      } else {
+        console.log(`Party Vision | ${actor.name}: Strategy 4 (Prototype Token) - no meaningful light`);
       }
     }
     
-    // Check if this actor has any meaningful light
+    // Check if this actor has any meaningful light and add to collection
     if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {
       lights.push({
         actorName: actor.name,
@@ -1497,9 +1558,15 @@ async function updatePartyLightingFromActors(partyToken) {
         saturation: effectiveLight.saturation || 0,
         shadows: effectiveLight.shadows || 0
       });
+      console.log(`Party Vision | ${actor.name}: ✅ ADDED TO LIGHTS ARRAY (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
     } else {
-      console.log(`Party Vision | ${actor.name}: No light detected`);
+      console.log(`Party Vision | ${actor.name}: ❌ NO LIGHT - not added to array`);
     }
+  }
+  
+  console.log(`Party Vision | ===== LIGHT COLLECTION COMPLETE: Found ${lights.length} light source(s) =====`);
+  if (lights.length > 0) {
+    lights.forEach(l => console.log(`Party Vision |   - ${l.actorName}: bright=${l.bright}, dim=${l.dim}`));
   }
   
   // Aggregate lighting
