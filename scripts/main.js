@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.11');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.12');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -1284,6 +1284,11 @@ async function updatePartyLightingFromActors(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   if (!memberData) return;
   
+  // CRITICAL FIX: Add small delay to ensure actor/effect data is fully processed
+  // This handles the case where lighting changes trigger hooks before the actor's
+  // derived data (including light calculations) has been updated
+  await new Promise(resolve => setTimeout(resolve, 50));
+  
   const lights = [];
   
   console.log(`Party Vision | Checking lighting for ${memberData.length} party members`);
@@ -1314,10 +1319,20 @@ async function updatePartyLightingFromActors(partyToken) {
     // STRATEGY 2: Try to get computed token data with effects applied
     if (!effectiveLight) {
       try {
-        // For systems with active effects, try to get a synthetic token with effects applied
-        // First ensure actor data is prepared
+        // CRITICAL FIX: Force full actor data preparation before reading light data
+        // This ensures all active effects and item states are properly applied
         if (actor.prepareData) {
           actor.prepareData();
+        }
+        
+        // For v13+ also prepare embedded documents (items, effects)
+        if (actor.prepareEmbeddedDocuments) {
+          actor.prepareEmbeddedDocuments();
+        }
+        
+        // Additional preparation for systems that compute derived data
+        if (actor.prepareDerivedData) {
+          actor.prepareDerivedData();
         }
         
         // Try multiple methods to get effective token data
@@ -1332,7 +1347,16 @@ async function updatePartyLightingFromActors(partyToken) {
             dim: tokenDoc?.light?.dim
           });
         }
-        // Method B: Direct prototype access after data prep (fallback)
+        // Method B: Create synthetic token (PF2e and other systems)
+        else if (typeof actor.getTokenData === 'function') {
+          tokenDoc = actor.getTokenData();
+          console.log(`Party Vision | ${actor.name}: getTokenData() returned:`, {
+            hasLight: !!tokenDoc?.light,
+            bright: tokenDoc?.light?.bright,
+            dim: tokenDoc?.light?.dim
+          });
+        }
+        // Method C: Direct prototype access after data prep (fallback)
         else if (actor.prototypeToken) {
           tokenDoc = actor.prototypeToken;
           console.log(`Party Vision | ${actor.name}: Using prototypeToken directly:`, {
@@ -1371,8 +1395,8 @@ async function updatePartyLightingFromActors(partyToken) {
           for (const change of effect.changes || []) {
             const key = change.key || '';
             
-            // Check if this modifies prototypeToken.light
-            if (key.includes('prototypeToken.light')) {
+            // Check if this modifies prototypeToken.light OR ATL (Advanced Token Lighting) properties
+            if (key.includes('prototypeToken.light') || key.includes('ATL.light') || key.includes('light.')) {
               const parts = key.split('.');
               const lightProp = parts[parts.length - 1]; // e.g., 'bright', 'dim', 'color'
               const value = change.value;
@@ -1404,14 +1428,51 @@ async function updatePartyLightingFromActors(partyToken) {
         
         if (hasEffectLight && (computedLight.bright > 0 || computedLight.dim > 0)) {
           effectiveLight = computedLight;
-          console.log(`Party Vision | ${actor.name}: Using prototype + manual effect application (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+          console.log(`Party Vision | ${actor.name}: ✓ Using prototype + manual effect application (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
         }
       } catch (e) {
         console.log(`Party Vision | ${actor.name}: Manual effect application failed:`, e.message);
       }
     }
     
-    // STRATEGY 3: Fall back to prototype token (base case)
+    // STRATEGY 3: Check for system-specific light-emitting items (PF2e torches, etc.)
+    if (!effectiveLight) {
+      try {
+        // Look for equipped items that emit light
+        const items = actor.items || [];
+        for (const item of items) {
+          // Check if item is equipped and has light data
+          const isEquipped = item.system?.equipped || item.system?.equipped?.value || 
+                           item.system?.equipped?.invested || item.system?.equipped?.handsHeld > 0;
+          
+          if (isEquipped && item.system?.light) {
+            const itemLight = item.system.light;
+            if (itemLight.bright > 0 || itemLight.dim > 0) {
+              effectiveLight = {
+                bright: itemLight.bright || 0,
+                dim: itemLight.dim || 0,
+                angle: itemLight.angle || 360,
+                color: itemLight.color || null,
+                alpha: itemLight.alpha || 0.5,
+                animation: itemLight.animation || {},
+                coloration: itemLight.coloration || 1,
+                luminosity: itemLight.luminosity || 0.5,
+                attenuation: itemLight.attenuation || 0.5,
+                contrast: itemLight.contrast || 0,
+                saturation: itemLight.saturation || 0,
+                shadows: itemLight.shadows || 0
+              };
+              console.log(`Party Vision | ${actor.name}: ✓ Found equipped light-emitting item "${item.name}" (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+              break; // Use first light-emitting item found
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`Party Vision | ${actor.name}: Item light check failed:`, e.message);
+      }
+    }
+    
+    // STRATEGY 4: Fall back to prototype token (base case)
     if (!effectiveLight) {
       effectiveLight = actor.prototypeToken?.light;
       if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {

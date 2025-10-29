@@ -5,6 +5,35 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.12] - 2025-10-29
+
+### Fixed
+- **CRITICAL - Real-time Lighting Synchronization**: Party token lighting now updates immediately when party members light/extinguish light sources
+  - Added 50ms delay to ensure actor/effect data is fully processed before reading lighting state
+  - Enhanced actor data preparation by calling prepareData(), prepareEmbeddedDocuments(), and prepareDerivedData()
+  - Added new Strategy 3: Direct item inspection for equipped light-emitting items (torches, lanterns, etc.)
+  - Expanded active effect detection to include ATL (Advanced Token Lighting) properties
+  - Added support for getTokenData() method used by some game systems
+  - **Before**: Lighting only updated when party was re-formed; changes while formed were ignored
+  - **After**: Party token lighting updates within 150ms when any member lights/extinguishes a light source
+  - Fixes issue where Valeros lights torch → no light on party token (now works correctly)
+  - Fixes issue where Valeros puts out torch → party token stays lit (now updates correctly)
+
+### Changed
+- Lighting detection now uses 4 strategies in order of preference:
+  1. Deployed tokens (if any exist outside the party)
+  2. Computed token data with effects applied (getTokenDocument/getTokenData)
+  3. **NEW**: Direct inspection of equipped items with light properties
+  4. Prototype token fallback
+- Improved console logging for lighting detection to aid troubleshooting
+- More aggressive data preparation ensures all effects and items are processed before reading light state
+
+### Technical
+- The new item inspection strategy catches PF2e torches, D&D5e light-emitting items, and similar equipment
+- Added support for multiple equipped states: equipped, equipped.value, equipped.invested, equipped.handsHeld
+- Lighting updates are debounced at 100ms to prevent rapid-fire updates from multiple hooks
+- Total processing time from light change to party token update: ~150ms (50ms delay + 100ms debounce)
+
 ## [2.2.11] - 2025-10-29
 
 ### Fixed
