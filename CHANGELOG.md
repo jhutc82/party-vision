@@ -5,6 +5,46 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.6] - 2025-10-29
+
+### Fixed
+- **Critical: Party Token Ownership**: Party tokens now properly grant ownership to all players whose characters are in the party. This fixes the "There is no Token in this Scene which gives you visibility of the area" error when players log in with characters that are already in a formed party.
+  - Party tokens now inherit ownership from all member actors
+  - Players can now see through party tokens containing their characters
+  - Ownership includes all users with OBSERVER level or higher on member actors
+  - Fixes vision for temporary/guest players joining after party formation
+
+### Technical
+- Form Party macro now creates party tokens with `ownership` property
+- Ownership automatically includes all players who own characters in the party
+- Default ownership is NONE, with explicit grants for player character owners
+- Uses Foundry's standard document ownership system for proper permission handling
+
+## [2.2.5] - 2025-10-29
+
+### Fixed
+- **Critical: Real-time Lighting Updates**: Fixed lighting synchronization hooks to properly detect torch lighting/extinguishing in PF2e and other systems
+  - `updateActor` hook now triggers for ANY actor change when actor is in a party (was too restrictive)
+  - `updateItem` hook now triggers for ANY item change on party member actors (was checking specific properties only)
+  - Added `createItem` and `deleteItem` hooks to catch torch addition/removal
+  - Party token lighting now updates immediately when players light/extinguish torches from character sheet
+  - Party token lighting now updates immediately when light spells expire or are dismissed
+
+### Added
+- Enhanced debugging for light detection with detailed console logging
+- `PartyVision.refreshAllPartyLighting()` function for manual lighting refresh (accessible from console)
+- Better error messages and troubleshooting information
+
+### Changed
+- Lighting hooks are now more aggressive about checking for changes on party member actors
+- Light detection now logs which strategy successfully detected light for each actor
+- All item changes on party members now trigger lighting updates (system-agnostic approach)
+
+### Technical
+- Hooks no longer filter for specific property changes - any change to party member actors triggers debounced lighting update
+- This catches system-specific implementations (like PF2e's torch lighting) that don't follow standard patterns
+- Manual refresh function allows testing and workaround if automatic updates fail
+
 ## [2.2.4] - 2025-10-29
 
 ### Fixed

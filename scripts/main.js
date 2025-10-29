@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.4');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.6');
 
   // Check for libWrapper dependency with detailed logging
   const libWrapperModule = game.modules.get('libWrapper');
@@ -847,21 +847,24 @@ Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
  * Watch for actor prototype token changes (e.g., when player updates their character's light in actor sheet)
  */
 Hooks.on('updateActor', async (actor, change, options, userId) => {
-  // Only process if prototypeToken.light changed
-  if (!change.prototypeToken?.light) return;
+  // CRITICAL FIX: In PF2e, lighting a torch doesn't always directly modify prototypeToken.light
+  // It might modify items, effects, or system data. So we need to check if this actor is in any party
+  // and update lighting regardless of what changed.
   
-  console.log(`Party Vision | Detected light change on actor ${actor.name}`);
-  
-  // Find all party tokens that contain this actor
+  // Quick check: is this actor in any party?
   const partyTokens = canvas.tokens.placeables.filter(t => {
     const memberData = t.document.getFlag('party-vision', 'memberData');
     if (!memberData) return false;
     return memberData.some(m => m.actorId === actor.id);
   });
   
-  console.log(`Party Vision | Found ${partyTokens.length} party token(s) containing ${actor.name}`);
+  // If actor isn't in any party, no need to update
+  if (partyTokens.length === 0) return;
+  
+  console.log(`Party Vision | Actor ${actor.name} updated (in ${partyTokens.length} party token(s)), checking lighting...`);
   
   // Update lighting on each party token
+  // The updatePartyLightingFromActors function will read the current light state
   for (const partyToken of partyTokens) {
     debouncedUpdatePartyLighting(partyToken);
   }
@@ -892,18 +895,32 @@ Hooks.on('updateItem', async (item, change, options, userId) => {
   const actor = item.parent;
   if (!actor || actor.documentName !== 'Actor') return;
   
-  // Check if the change might affect lighting (equipped state, usage, etc.)
-  const mightAffectLight = 
-    change.system?.equipped !== undefined ||  // Item equipped/unequipped
-    change.system?.carried !== undefined ||   // PF2e carrying state
-    change.system?.usage !== undefined ||     // Item usage state
-    change.system?.quantity !== undefined;    // Quantity (torch consumed?)
+  // Quick check: is this actor in any party?
+  const partyTokens = canvas.tokens.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return false;
+    return memberData.some(m => m.actorId === actor.id);
+  });
   
-  if (!mightAffectLight) return;
+  // If actor isn't in any party, no need to update
+  if (partyTokens.length === 0) return;
   
-  console.log(`Party Vision | Item "${item.name}" changed on ${actor.name}, checking for light update`);
+  console.log(`Party Vision | Item "${item.name}" updated on ${actor.name} (in party), checking lighting...`);
   
-  // Find all party tokens containing this actor
+  // Update lighting on each party token
+  // The updatePartyLightingFromActors function will read the current light state
+  for (const partyToken of partyTokens) {
+    debouncedUpdatePartyLighting(partyToken);
+  }
+});
+
+/**
+ * Watch for item creation (e.g., buying/finding a torch)
+ */
+Hooks.on('createItem', async (item, options, userId) => {
+  const actor = item.parent;
+  if (!actor || actor.documentName !== 'Actor') return;
+  
   const partyTokens = canvas.tokens.placeables.filter(t => {
     const memberData = t.document.getFlag('party-vision', 'memberData');
     if (!memberData) return false;
@@ -912,9 +929,34 @@ Hooks.on('updateItem', async (item, change, options, userId) => {
   
   if (partyTokens.length === 0) return;
   
-  // Update lighting on each party token
+  console.log(`Party Vision | Item "${item.name}" created on ${actor.name} (in party), checking lighting...`);
+  
   for (const partyToken of partyTokens) {
     debouncedUpdatePartyLighting(partyToken);
+  }
+});
+
+/**
+ * Watch for item deletion (e.g., torch consumed/removed)
+ */
+Hooks.on('deleteItem', async (item, options, userId) => {
+  const actor = item.parent;
+  if (!actor || actor.documentName !== 'Actor') return;
+  
+  const partyTokens = canvas.tokens.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return false;
+    return memberData.some(m => m.actorId === actor.id);
+  });
+  
+  if (partyTokens.length === 0) return;
+  
+  console.log(`Party Vision | Item "${item.name}" deleted from ${actor.name} (in party), checking lighting...`);
+  
+  for (const partyToken of partyTokens) {
+    debouncedUpdatePartyLighting(partyToken);
+  }
+});
   }
 });
 
@@ -1054,15 +1096,25 @@ async function updatePartyLightingFromActors(partyToken) {
         // Method A: getTokenDocument (most systems)
         if (typeof actor.getTokenDocument === 'function') {
           tokenDoc = await actor.getTokenDocument();
+          console.log(`Party Vision | ${actor.name}: getTokenDocument() returned:`, {
+            hasLight: !!tokenDoc?.light,
+            bright: tokenDoc?.light?.bright,
+            dim: tokenDoc?.light?.dim
+          });
         }
         // Method B: Direct prototype access after data prep (fallback)
         else if (actor.prototypeToken) {
           tokenDoc = actor.prototypeToken;
+          console.log(`Party Vision | ${actor.name}: Using prototypeToken directly:`, {
+            hasLight: !!tokenDoc?.light,
+            bright: tokenDoc?.light?.bright,
+            dim: tokenDoc?.light?.dim
+          });
         }
         
         if (tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0)) {
           effectiveLight = tokenDoc.light;
-          console.log(`Party Vision | ${actor.name}: Using computed token data (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
+          console.log(`Party Vision | ${actor.name}: ✓ Using computed token data (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
         }
       } catch (e) {
         console.log(`Party Vision | ${actor.name}: getTokenDocument failed:`, e.message);
@@ -1478,5 +1530,31 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
 window.PartyVision = {
   deployParty,
   updatePartyLighting,
-  FORMATION_PRESETS
+  updatePartyLightingFromActors,
+  FORMATION_PRESETS,
+  
+  /**
+   * Manually refresh lighting for all party tokens on the scene
+   * Useful for debugging or if automatic updates aren't working
+   */
+  refreshAllPartyLighting: async function() {
+    const partyTokens = canvas.tokens.placeables.filter(t => {
+      const memberData = t.document.getFlag('party-vision', 'memberData');
+      return memberData && memberData.length > 0;
+    });
+    
+    if (partyTokens.length === 0) {
+      ui.notifications.info("No party tokens found on scene");
+      return;
+    }
+    
+    console.log(`Party Vision | Manually refreshing ${partyTokens.length} party token(s)`);
+    
+    for (const partyToken of partyTokens) {
+      await updatePartyLightingFromActors(partyToken);
+    }
+    
+    ui.notifications.info(`Refreshed lighting for ${partyTokens.length} party token(s)`);
+  }
 };
+
