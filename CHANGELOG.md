@@ -5,6 +5,25 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.9] - 2025-10-29
+
+### Fixed
+- **Module Loading**: Enhanced initialization sequence for better Foundry v13 compatibility
+  - Added explicit Foundry version check in init hook
+  - Improved module loading reliability
+  - Added final module export confirmation log
+  - Better error reporting during initialization
+
+### Changed
+- Added explicit Foundry game object validation
+- Enhanced console logging for better troubleshooting
+- Improved module initialization error handling
+
+### Technical
+- Version bump to address potential module loading edge cases in Foundry v13
+- All syntax validation passes (Node.js and browser compatibility confirmed)
+- No functional changes to existing features
+
 ## [2.2.8] - 2025-10-29
 
 ### Fixed

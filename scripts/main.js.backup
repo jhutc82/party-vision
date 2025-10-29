@@ -33,15 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.9');
-  
-  // Explicit check for Foundry version
-  if (!game || !game.version) {
-    console.error('Party Vision | Foundry game object not available');
-    return;
-  }
-  
-  console.log('Party Vision | Foundry version:', game.version);
+  console.log('Party Vision | Initializing Enhanced Module v2.2.8');
 
   // --- REGISTER MODULE SETTINGS FIRST (before any early returns) ---
   console.log('Party Vision | Registering module settings...');
@@ -1844,4 +1836,3 @@ window.PartyVision = {
   }
 };
 
-console.log('Party Vision | Module fully loaded and exported to window.PartyVision');
