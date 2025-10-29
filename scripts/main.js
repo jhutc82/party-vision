@@ -1234,41 +1234,6 @@ Hooks.on('deleteItem', async (item, options, userId) => {
 });
 
 /**
- * Catch-all: Watch for any actor updates that might affect lighting
- * This is broader than just prototypeToken.light changes
- */
-Hooks.on('updateActor', async (actor, change, options, userId) => {
-  // Skip if this is just the prototypeToken.light changing (already handled above)
-  if (change.prototypeToken?.light && Object.keys(change).length === 1 && Object.keys(change.prototypeToken).length === 1) {
-    return; // Already handled by the specific prototypeToken.light hook
-  }
-  
-  // Check for changes that might affect lighting indirectly
-  const mightAffectLight = 
-    change.system !== undefined ||  // System data changed (could be equipment, effects, etc.)
-    change.items !== undefined ||   // Items changed
-    change.effects !== undefined;   // Effects changed
-  
-  if (!mightAffectLight) return;
-  
-  console.log(`Party Vision | Actor ${actor.name} updated, checking for light changes`);
-  
-  // Find all party tokens containing this actor
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  if (partyTokens.length === 0) return;
-  
-  // Update lighting on each party token
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-});
-
-/**
  * Handle Active Effect changes that might affect lighting
  * @param {ActiveEffect} effect - The active effect that changed
  */
