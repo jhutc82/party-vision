@@ -1706,7 +1706,6 @@ async function deployParty(partyToken, radians, fromCombat = false) {
   // Delete party token
   await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
 }
-}
 
 /**
  * Finds a valid unoccupied spot for token placement using spiral search
