@@ -5,6 +5,23 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.11] - 2025-10-29
+
+### Fixed
+- **CRITICAL - Foundry v13 Compatibility**: Removed deprecated `Token.prototype._onDoubleLeft` wrapper
+  - This method no longer exists in Foundry v13
+  - Was preventing module initialization and causing libWrapper errors
+  - Double-click to open character sheets feature temporarily removed
+  - Players can still right-click party token → Open Actor Sheet
+
+### Changed
+- Reduced libWrapper hook count from 2 to 1 (only vision hook remains)
+- Module now initializes successfully without errors
+
+### Technical
+- Removed non-existent method wrapper that was breaking module load
+- All other functionality remains intact and working
+
 ## [2.2.10] - 2025-10-29
 
 ### Fixed

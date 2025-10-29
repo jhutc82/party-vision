@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.10');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.11');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -247,32 +247,14 @@ Hooks.once('init', () => {
     
     return result;
   }, 'WRAPPER');
-
-  // --- REGISTER DOUBLE-CLICK HOOK ---
   
-  libWrapper.register('party-vision', 'Token.prototype._onDoubleLeft', function(wrapped, event) {
-    const partyToken = this;
-    const memberData = partyToken.document.getFlag("party-vision", "memberData");
-    
-    if (!memberData) return wrapped(event);
-    if (game.user.isGM) return wrapped(event);
-    
-    // Open sheets for owned characters
-    const actorsToOpen = [];
-    for (const member of memberData) {
-      const actor = game.actors.get(member.actorId);
-      if (actor && actor.isOwner) actorsToOpen.push(actor);
-    }
-    
-    for (const actor of actorsToOpen) {
-      actor.sheet.render(true);
-    }
-  }, 'MIXED');
+  // NOTE: Token.prototype._onDoubleLeft was removed in Foundry v13
+  // Double-click functionality removed for now - players can still right-click → Open Actor Sheet
   
   console.log('Party Vision | Init hook completed successfully');
   console.log('Party Vision | Settings registered: 6');
   console.log('Party Vision | Keybindings registered: 1');
-  console.log('Party Vision | libWrapper hooks registered: 2');
+  console.log('Party Vision | libWrapper hooks registered: 1'); // Updated count
 });
 
 // ==============================================
