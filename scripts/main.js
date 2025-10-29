@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.6');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.7');
 
   // Check for libWrapper dependency with detailed logging
   const libWrapperModule = game.modules.get('libWrapper');
@@ -84,6 +84,38 @@ Hooks.once('init', () => {
     config: true,
     type: Boolean,
     default: true,
+  });
+
+  game.settings.register('party-vision', 'autoFormOnCombatEnd', {
+    name: "Auto-Form on Combat End",
+    hint: "Automatically reform the party when combat ends.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register('party-vision', 'animateDeployment', {
+    name: "Animate Deployment",
+    hint: "Smoothly animate tokens when deploying the party.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+
+  game.settings.register('party-vision', 'deploymentAnimationSpeed', {
+    name: "Deployment Animation Speed (ms)",
+    hint: "Duration of deployment animation in milliseconds. Lower = faster.",
+    scope: 'world',
+    config: true,
+    type: Number,
+    default: 500,
+    range: {
+      min: 100,
+      max: 2000,
+      step: 100
+    }
   });
 
   game.settings.register('party-vision', 'showMemberPortraits', {
@@ -511,6 +543,13 @@ Hooks.on('getTokenContextOptions', (html, contextOptions) => {
       condition: () => memberData && memberData.length > 1,
       callback: () => removeMemberDialog(token)
     });
+    
+    contextOptions.push({
+      name: "Split Party",
+      icon: '<i class="fas fa-users-cog"></i>',
+      condition: () => memberData && memberData.length > 1,
+      callback: () => splitPartyDialog(token)
+    });
   }
   
   // Add "Add to Party" for regular tokens near party tokens
@@ -545,8 +584,10 @@ function renderMemberPortraits(token, memberData) {
     const actor = game.actors.get(member.actorId);
     if (!actor) return;
     
-    const angle = (index / members.length) * Math.PI * 2;
-    const radius = token.w * 0.6;
+    // Evenly space portraits around the token perimeter
+    // Start from top (12 o'clock) and go clockwise
+    const angle = (index / members.length) * Math.PI * 2 - Math.PI / 2; // Start at top
+    const radius = Math.max(token.w, token.h) * 0.65; // Position just outside token edge
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
     
@@ -565,10 +606,12 @@ function renderMemberPortraits(token, memberData) {
     container.addChild(mask);
     sprite.mask = mask;
     
-    // Add border
+    // Add border with slight glow effect
     const border = new PIXI.Graphics();
-    border.lineStyle(2, 0xFFFFFF, 0.8);
+    border.lineStyle(2, 0xFFFFFF, 0.9);
     border.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2);
+    border.lineStyle(1, 0x00AAFF, 0.5);
+    border.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2 + 1);
     
     container.addChild(sprite);
     container.addChild(border);
@@ -603,27 +646,79 @@ function renderRangeIndicator(token, memberData) {
 }
 
 // ==============================================
-// FOLLOW-THE-LEADER MODE
+// COMBAT INTEGRATION - Auto-Deploy and Auto-Form
 // ==============================================
 
-Hooks.on('combatStart', async (combat, updateData) => {
-  if (!game.settings.get('party-vision', 'autoDeployOnCombat')) return;
+// Auto-deploy on combat start
+Hooks.on('updateCombat', async (combat, updateData, options, userId) => {
+  // Only trigger for the GM
   if (!game.user.isGM) return;
   
-  // Find party tokens on the current scene
-  const partyTokens = canvas.tokens.placeables.filter(t => 
-    t.document.getFlag('party-vision', 'memberData')
-  );
+  // Check if combat is starting (round changes from undefined/0 to 1)
+  const isStarting = updateData.round === 1 && combat.previous.round !== 1;
+  const isEnding = combat.round > 0 && updateData.active === false;
   
-  if (partyTokens.length === 0) return;
+  if (isStarting && game.settings.get('party-vision', 'autoDeployOnCombat')) {
+    console.log('Party Vision | Combat starting - auto-deploying party tokens');
+    
+    // Find party tokens on the current scene
+    const partyTokens = canvas.tokens.placeables.filter(t => 
+      t.document.getFlag('party-vision', 'memberData')
+    );
+    
+    if (partyTokens.length === 0) return;
+    
+    ui.notifications.info(`Auto-deploying ${partyTokens.length} party token(s) for combat...`);
+    
+    for (const partyToken of partyTokens) {
+      const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
+      await deployParty(partyToken, lastFacing, true); // Pass true for combat mode
+    }
+  }
   
-  ui.notifications.info(`Auto-deploying ${partyTokens.length} party token(s) for combat...`);
-  
-  for (const partyToken of partyTokens) {
-    const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
-    await deployParty(partyToken, lastFacing);
+  if (isEnding && game.settings.get('party-vision', 'autoFormOnCombatEnd')) {
+    console.log('Party Vision | Combat ending - auto-forming party');
+    
+    // Wait a moment for combat to fully end
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Find all tokens that could be party members (player-owned tokens)
+    const playerTokens = canvas.tokens.placeables.filter(t => {
+      if (!t.actor) return false;
+      if (t.document.getFlag('party-vision', 'memberData')) return false; // Skip existing party tokens
+      
+      // Check if any player owns this actor
+      const owners = Object.entries(t.actor.ownership || {})
+        .filter(([userId, level]) => level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER)
+        .map(([userId]) => userId);
+      
+      return owners.some(userId => {
+        const user = game.users.get(userId);
+        return user && !user.isGM;
+      });
+    });
+    
+    if (playerTokens.length > 0) {
+      ui.notifications.info(`Auto-forming party from ${playerTokens.length} tokens...`);
+      
+      // Select the tokens programmatically
+      canvas.tokens.releaseAll();
+      playerTokens.forEach(t => t.control({ releaseOthers: false }));
+      
+      // Call the Form Party function
+      const formPartyMacro = (await game.packs.get("party-vision.macros").getDocuments())
+        .find(m => m.name === "Form Party");
+      
+      if (formPartyMacro) {
+        await formPartyMacro.execute();
+      }
+    }
   }
 });
+
+// ==============================================
+// FOLLOW-THE-LEADER MODE
+// ==============================================
 
 // ==============================================
 // MEMBER MANAGEMENT FUNCTIONS
@@ -721,6 +816,186 @@ async function removeMember(partyToken, actorId) {
   
   await partyToken.document.setFlag('party-vision', 'memberData', memberData);
   ui.notifications.info("Member removed from party.");
+  partyToken.refresh();
+}
+
+async function splitPartyDialog(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  
+  if (memberData.length < 2) {
+    ui.notifications.warn("Need at least 2 members to split the party.");
+    return;
+  }
+  
+  const checkboxes = memberData.map((m, index) => {
+    const actor = game.actors.get(m.actorId);
+    return `
+      <div style="padding: 5px 0;">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" class="split-member" value="${index}" style="margin-right: 10px;">
+          <span>${actor?.name || 'Unknown'}</span>
+        </label>
+      </div>
+    `;
+  }).join('');
+  
+  new Dialog({
+    title: "Split Party",
+    content: `
+      <div style="padding: 10px;">
+        <p><strong>Select members to split into a new party:</strong></p>
+        <p style="font-size: 0.9em; color: #999; margin-bottom: 15px;">
+          Selected members will form a new party token.
+          Remaining members will stay in the current party.
+        </p>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px; border-radius: 3px;">
+          ${checkboxes}
+        </div>
+      </div>
+    `,
+    buttons: {
+      split: {
+        label: "Split Party",
+        callback: async (html) => {
+          const selected = [];
+          html.find('.split-member:checked').each(function() {
+            selected.push(parseInt($(this).val()));
+          });
+          
+          if (selected.length === 0) {
+            ui.notifications.warn("Please select at least one member to split off.");
+            return;
+          }
+          
+          if (selected.length === memberData.length) {
+            ui.notifications.warn("Cannot split all members. Leave at least one in the original party.");
+            return;
+          }
+          
+          await splitParty(partyToken, selected);
+        }
+      },
+      cancel: { label: "Cancel" }
+    },
+    default: "split",
+    render: (html) => {
+      // Add "Select All" / "Select None" helpers
+      html.find('.dialog-content').prepend(`
+        <div style="margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 3px;">
+          <button type="button" id="select-all" style="margin-right: 5px;">Select All</button>
+          <button type="button" id="select-none">Select None</button>
+        </div>
+      `);
+      
+      html.find('#select-all').on('click', () => {
+        html.find('.split-member').prop('checked', true);
+      });
+      
+      html.find('#select-none').on('click', () => {
+        html.find('.split-member').prop('checked', false);
+      });
+    }
+  }).render(true);
+}
+
+async function splitParty(partyToken, selectedIndices) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  
+  // Split members into two groups
+  const splitMembers = [];
+  const remainingMembers = [];
+  
+  memberData.forEach((member, index) => {
+    if (selectedIndices.includes(index)) {
+      splitMembers.push(member);
+    } else {
+      remainingMembers.push(member);
+    }
+  });
+  
+  if (remainingMembers.length === 0 || splitMembers.length === 0) {
+    ui.notifications.error("Invalid split - each party needs at least one member.");
+    return;
+  }
+  
+  // Calculate center of split members (relative to current party token)
+  let splitCenterX = 0;
+  let splitCenterY = 0;
+  splitMembers.forEach(m => {
+    splitCenterX += m.dx;
+    splitCenterY += m.dy;
+  });
+  splitCenterX /= splitMembers.length;
+  splitCenterY /= splitMembers.length;
+  
+  // Recalculate positions relative to new center
+  const recenteredSplitMembers = splitMembers.map(m => ({
+    ...m,
+    dx: Math.round(m.dx - splitCenterX),
+    dy: Math.round(m.dy - splitCenterY)
+  }));
+  
+  // Create new party token for split group
+  const gridSize = canvas.grid.size;
+  const offset = gridSize * 2; // Offset new party by 2 grid squares
+  
+  // Get max dimensions from split members
+  let maxWidth = 1;
+  let maxHeight = 1;
+  for (const member of splitMembers) {
+    const actor = game.actors.get(member.actorId);
+    if (actor?.prototypeToken) {
+      if (actor.prototypeToken.width > maxWidth) maxWidth = actor.prototypeToken.width;
+      if (actor.prototypeToken.height > maxHeight) maxHeight = actor.prototypeToken.height;
+    }
+  }
+  
+  const newPartyData = {
+    name: "Split Party",
+    x: partyToken.x + offset,
+    y: partyToken.y + offset,
+    texture: { src: "icons/svg/users.svg" },
+    width: maxWidth,
+    height: maxHeight,
+    sight: {
+      enabled: true,
+      range: 0,
+      angle: 360,
+      visionMode: "basic"
+    },
+    displayName: CONST.TOKEN_DISPLAY_MODES.ALWAYS,
+    actorLink: false,
+    disposition: CONST.TOKEN_DISPOSITIONS.FRIENDLY,
+    ring: {
+      enabled: false
+    },
+    ownership: {
+      default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
+      ...Object.fromEntries(
+        recenteredSplitMembers
+          .map(m => game.actors.get(m.actorId))
+          .filter(a => a)
+          .flatMap(a => 
+            Object.entries(a.ownership || {})
+              .filter(([userId, level]) => level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER)
+          )
+      )
+    },
+    flags: {
+      "party-vision": {
+        "memberData": recenteredSplitMembers,
+        "naturalFacing": partyToken.document.getFlag('party-vision', 'naturalFacing') || (-Math.PI / 2)
+      }
+    }
+  };
+  
+  // Create new party token
+  await canvas.scene.createEmbeddedDocuments("Token", [newPartyData]);
+  
+  // Update original party with remaining members
+  await partyToken.document.setFlag('party-vision', 'memberData', remainingMembers);
+  
+  ui.notifications.info(`Party split! ${splitMembers.length} members in new party, ${remainingMembers.length} remaining.`);
   partyToken.refresh();
 }
 
@@ -1343,9 +1618,10 @@ function aggregateLights(lights) {
  * Deploys the party token, spawning individual member tokens
  * @param {Token} partyToken - The party token to deploy
  * @param {number} radians - Direction to face (in radians)
+ * @param {boolean} fromCombat - Whether deployment is triggered by combat (skips some checks)
  * @returns {Promise<void>}
  */
-async function deployParty(partyToken, radians) {
+async function deployParty(partyToken, radians, fromCombat = false) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   const gridSize = canvas.grid.size;
   const assignedGridSpots = new Set();
@@ -1360,6 +1636,7 @@ async function deployParty(partyToken, radians) {
   const cos = Math.cos(rotationAngle);
   const sin = Math.sin(rotationAngle);
   const newTokensData = [];
+  const finalPositions = []; // Store final positions for animation
   
   // Sort by distance from center
   const sortedMembers = [...memberData].sort((a, b) => 
@@ -1406,11 +1683,14 @@ async function deployParty(partyToken, radians) {
     const finalX = validSpot.x * gridSize;
     const finalY = validSpot.y * gridSize;
     
+    // Check if animation is enabled
+    const shouldAnimate = game.settings.get('party-vision', 'animateDeployment');
+    
     // CRITICAL: Create clean token data for proper actor linking
     const newToken = {
       ...tokenData,
-      x: finalX,
-      y: finalY,
+      x: shouldAnimate ? partyToken.x : finalX,  // Start at party location if animating
+      y: shouldAnimate ? partyToken.y : finalY,
       actorId: actor.id,
       actorLink: protoToken.actorLink,
       // Ensure actor data is preserved
@@ -1423,10 +1703,44 @@ async function deployParty(partyToken, radians) {
     delete newToken.delta;
     
     newTokensData.push(newToken);
+    
+    // Store final position for animation
+    if (shouldAnimate) {
+      finalPositions.push({ x: finalX, y: finalY });
+    }
   }
   
-  await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
+  // Create tokens
+  const createdTokens = await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
+  
+  // Animate if enabled
+  if (game.settings.get('party-vision', 'animateDeployment')) {
+    const animationSpeed = game.settings.get('party-vision', 'deploymentAnimationSpeed');
+    const animations = [];
+    
+    for (let i = 0; i < createdTokens.length; i++) {
+      const tokenDoc = createdTokens[i];
+      const token = canvas.tokens.get(tokenDoc.id);
+      const finalPos = finalPositions[i];
+      
+      if (token && finalPos) {
+        // Animate token to final position
+        animations.push(
+          token.document.update({ x: finalPos.x, y: finalPos.y }, { animate: true, animation: { duration: animationSpeed } })
+        );
+      }
+    }
+    
+    // Wait for all animations to complete
+    await Promise.all(animations);
+    
+    // Small delay to ensure animations are visible
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  // Delete party token
   await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+}
 }
 
 /**

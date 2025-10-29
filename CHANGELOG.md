@@ -5,6 +5,54 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.7] - 2025-10-29
+
+### Added
+- **Animated Deployment AND Forming**: Tokens now smoothly animate in both directions
+  - **Deployment**: Tokens animate from party token location to their final positions
+  - **Forming**: Tokens animate from their current positions to converge at party token location
+  - Configurable animation speed setting (100-2000ms, default 500ms)
+  - Can be disabled for instant deployment/forming
+  - Animations complete before party token is deleted/tokens are removed
+  - Both directions use the same animation setting for consistency
+- **Split Party Feature**: New context menu option to split party into two separate groups
+  - Select which members to split off into new party
+  - Remaining members stay in original party
+  - New party maintains formation structure
+  - Includes "Select All" / "Select None" helpers
+- **Auto-Form on Combat End**: Party automatically reforms when combat ends (configurable setting)
+  - Finds all player-owned tokens on scene
+  - Automatically forms them into a party token
+  - Saves GM time in exploration mode
+  - Can be disabled in settings
+- **Enhanced Portrait Display**: Party member portraits now arranged more evenly around token perimeter
+  - Portraits start from top (12 o'clock) and go clockwise
+  - Better positioning for larger tokens
+  - Added subtle glow effect to borders
+
+### Fixed
+- **Combat Auto-Deploy**: Fixed auto-deploy on combat start hook
+  - Changed from non-existent `combatStart` hook to `updateCombat` hook
+  - Properly detects when combat round changes from 0/undefined to 1
+  - Only triggers for GM to prevent duplicate deployments
+  - Includes fromCombat parameter to skip unnecessary checks
+- **Combat End Detection**: Added proper detection for combat ending
+  - Triggers when combat.active becomes false
+  - Waits for combat to fully end before auto-forming party
+
+### Changed
+- `deployParty()` function now accepts optional `fromCombat` parameter for combat-specific behavior
+- Portrait rendering improved with better spacing calculations based on token size
+- Combat integration now uses `updateCombat` hook instead of invalid `combatStart` hook
+
+### Technical
+- Split party functionality includes ownership inheritance from parent party
+- Animation system uses Foundry's built-in token.document.update with animate flag
+- **Forming animation**: Tokens animate to party center before being deleted
+- **Deployment animation**: Tokens spawn at party location, then animate to final positions
+- Combat detection checks both round changes and active status for reliability
+- Portrait positioning now uses `Math.max(token.w, token.h) * 0.65` for radius calculation
+
 ## [2.2.6] - 2025-10-29
 
 ### Fixed
