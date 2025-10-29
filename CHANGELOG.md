@@ -5,6 +5,51 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.15] - 2025-10-29
+
+### Fixed
+- **CRITICAL - Lighting Won't Turn OFF**: Fixed issue where lighting would turn ON but couldn't be turned OFF
+  - **Root Cause**: Calling actor preparation methods (prepareData, prepareEmbeddedDocuments, prepareDerivedData) on already-prepared PF2e actors caused frozen/sealed object errors
+  - PF2e error: `Cannot delete property 'speed' of #<Object>`
+  - PF2e error: `Cannot add property label, object is not extensible`
+  - **These errors caused lighting state to become corrupted/stuck on the actor**
+  - When deployed, tokens had lights permanently stuck ON that couldn't be toggled
+  - **Solution**: Removed ALL actor preparation calls - actors are already prepared when hooks fire
+  - Now we simply read the actor's current state without modifying it
+  - **Result**: Lights turn ON and OFF correctly, no frozen object errors
+
+### Changed
+- **Removed actor preparation calls**: No more prepareData(), prepareEmbeddedDocuments(), prepareDerivedData()
+- **Actors read as-is**: Trust that Foundry/game system has already prepared the actor when hooks fire
+- **Faster response time**: Reduced delay from 200ms → 100ms (don't need extra time for preparation we're not doing)
+- **Reduced debounce**: 200ms → 100ms to match processing delay
+- **Total update time**: ~200ms (was ~400ms in v2.2.14)
+- **Cleaner code**: Removed complex error handling around preparation methods
+
+### Technical
+- The key insight: Actors are already fully prepared by the time our hooks fire
+- Calling prepare methods again tries to modify frozen/sealed PF2e objects
+- This causes TypeErrors that corrupt the lighting state
+- Simply reading actor.items, actor.effects, actor.prototypeToken is safe
+- Getting computed token data (getTokenDocument/getTokenData) is also safe
+- Only manual preparation calls caused issues
+
+### Why This Was Happening
+1. User equips torch → updateItem hook fires
+2. PF2e processes the change, prepares actor data, freezes objects
+3. Our debounced function runs 100ms later
+4. We called prepareData() on already-frozen objects → TypeError
+5. Lighting state got corrupted from the errors
+6. Light stayed ON even when torch was removed
+
+### Why This Fix Works
+1. User equips torch → updateItem hook fires
+2. PF2e processes the change, prepares actor data
+3. Our debounced function runs 100ms later
+4. We simply READ the actor's current state (already prepared)
+5. No errors, lighting state is correct
+6. Light turns ON when equipped, OFF when removed
+
 ## [2.2.14] - 2025-10-29
 
 ### Fixed

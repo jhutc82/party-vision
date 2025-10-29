@@ -26,14 +26,14 @@ let followerOffsets = new Map();
 
 // Debouncing for party lighting updates
 const pendingLightingUpdates = new Map(); // Map<partyTokenId, timeoutId>
-const LIGHTING_UPDATE_DEBOUNCE_MS = 200; // Wait 200ms before actually updating (matches processing delay)
+const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 
 // ==============================================
 // INITIALIZATION
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.14');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.15');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -1284,10 +1284,10 @@ async function updatePartyLightingFromActors(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   if (!memberData) return;
   
-  // CRITICAL FIX: Increase delay to 200ms to ensure actor/effect data is fully processed
-  // Game systems need time to process item changes, apply effects, and update derived data
-  // 50ms was too short for some systems to complete their processing
-  await new Promise(resolve => setTimeout(resolve, 200));
+  // CRITICAL: Allow time for game system to process item/effect changes naturally
+  // We do NOT call actor prepare methods - the system does this automatically
+  // 100ms is enough time for most systems to complete their update hooks
+  await new Promise(resolve => setTimeout(resolve, 100));
   
   const lights = [];
   
@@ -1302,20 +1302,9 @@ async function updatePartyLightingFromActors(partyToken) {
     
     let effectiveLight = null;
     
-    // CRITICAL FIX: Reset actor data, but wrap in try-catch to handle PF2e Party actor issues
-    // Some actor types (like PF2e Party actors) crash when reset() is called
-    try {
-      // Only reset if it's a safe actor type (not Party type)
-      if (actor.type !== 'party' && actor.reset) {
-        actor.reset(); // Clear cached data
-        console.log(`Party Vision | ${actor.name}: Reset actor data cache`);
-      } else if (actor.type === 'party') {
-        console.log(`Party Vision | ${actor.name}: Skipping reset() for Party-type actor (not safe)`);
-      }
-    } catch (e) {
-      console.warn(`Party Vision | ${actor.name}: actor.reset() failed (non-critical): ${e.message}`);
-      // Continue anyway - this is not critical for lighting detection
-    }
+    // NOTE: We do NOT call actor.reset() or any prepare methods here!
+    // The actor is already prepared by Foundry's normal flow when our hooks fire.
+    // Calling prepare methods on already-prepared PF2e actors causes frozen object errors.
     
     // STRATEGY 1: Check if this actor has any deployed tokens on the scene (not part of a party)
     const deployedTokens = canvas.tokens.placeables.filter(t => 
@@ -1340,32 +1329,12 @@ async function updatePartyLightingFromActors(partyToken) {
     // STRATEGY 2: Try to get computed token data with effects applied
     if (!effectiveLight) {
       try {
-        // Force full actor data preparation (wrapped in try-catch for safety)
-        try {
-          if (actor.prepareData) {
-            actor.prepareData();
-          }
-        } catch (e) {
-          console.warn(`Party Vision | ${actor.name}: prepareData() failed (non-critical): ${e.message}`);
-        }
-        
-        try {
-          // For v13+ also prepare embedded documents (items, effects)
-          if (actor.prepareEmbeddedDocuments) {
-            actor.prepareEmbeddedDocuments();
-          }
-        } catch (e) {
-          console.warn(`Party Vision | ${actor.name}: prepareEmbeddedDocuments() failed (non-critical): ${e.message}`);
-        }
-        
-        try {
-          // Additional preparation for systems that compute derived data
-          if (actor.prepareDerivedData) {
-            actor.prepareDerivedData();
-          }
-        } catch (e) {
-          console.warn(`Party Vision | ${actor.name}: prepareDerivedData() failed (non-critical): ${e.message}`);
-        }
+        // NOTE: We do NOT call any prepare methods (prepareData, prepareEmbeddedDocuments, etc.)
+        // The actor is already fully prepared when our hooks fire.
+        // Calling prepare methods on already-prepared PF2e actors causes frozen object errors:
+        // - "Cannot delete property 'speed'"
+        // - "Cannot add property label, object is not extensible"
+        // Just read the current actor state directly!
         
         // Try multiple methods to get effective token data
         let tokenDoc = null;
