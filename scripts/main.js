@@ -33,30 +33,9 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.7');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.8');
 
-  // Check for libWrapper dependency with detailed logging
-  const libWrapperModule = game.modules.get('libWrapper');
-  console.log('Party Vision | libWrapper module object:', libWrapperModule);
-  console.log('Party Vision | libWrapper active?:', libWrapperModule?.active);
-  
-  // Check if libWrapper API is available (more reliable than checking active flag)
-  const hasLibWrapper = typeof libWrapper !== 'undefined';
-  console.log('Party Vision | libWrapper API available?:', hasLibWrapper);
-  
-  if (!hasLibWrapper) {
-    console.error('Party Vision | libWrapper API not found!');
-    ui.notifications.error("Party Vision requires 'libWrapper' module to be active!");
-    console.error('Party Vision | Make sure libWrapper is:');
-    console.error('  1. Installed');
-    console.error('  2. Activated in module settings'); 
-    console.error('  3. Loaded BEFORE Party Vision');
-    return;
-  }
-  
-  console.log('Party Vision | libWrapper detected, proceeding with initialization');
-
-  // --- REGISTER MODULE SETTINGS ---
+  // --- REGISTER MODULE SETTINGS FIRST (before any early returns) ---
   console.log('Party Vision | Registering module settings...');
   
   game.settings.register('party-vision', 'showHudButtons', {
@@ -191,6 +170,29 @@ Hooks.once('init', () => {
       return true;
     }
   });
+
+  // --- CHECK FOR LIBWRAPPER DEPENDENCY ---
+  console.log('Party Vision | Checking for libWrapper...');
+  const libWrapperModule = game.modules.get('lib-wrapper');
+  console.log('Party Vision | libWrapper module object:', libWrapperModule);
+  console.log('Party Vision | libWrapper active?:', libWrapperModule?.active);
+  
+  // Check if libWrapper API is available (more reliable than checking active flag)
+  const hasLibWrapper = typeof libWrapper !== 'undefined';
+  console.log('Party Vision | libWrapper API available?:', hasLibWrapper);
+  
+  if (!hasLibWrapper) {
+    console.error('Party Vision | libWrapper API not found!');
+    ui.notifications.error("Party Vision requires 'libWrapper' module to be active!");
+    console.error('Party Vision | Make sure libWrapper is:');
+    console.error('  1. Installed');
+    console.error('  2. Activated in module settings'); 
+    console.error('  3. Loaded BEFORE Party Vision');
+    console.error('Party Vision | Settings have been registered, but hooks will not work without libWrapper');
+    return;
+  }
+  
+  console.log('Party Vision | libWrapper detected, registering hooks...');
 
   // --- REGISTER VISION HOOK (FIX: Use v13 method name initializeVisionSource) ---
   

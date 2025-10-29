@@ -5,6 +5,30 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.8] - 2025-10-29
+
+### Fixed
+- **Foundry v13 Compatibility**: Removed legacy Foundry v9/v10 data paths from movement calculation
+  - Removed deprecated `actor.data.data.attributes.movement` path
+  - Removed deprecated `actor.data.data.attributes.speed` path
+  - All data paths now use v13 API structure
+  - No functional change - these paths were never executed in v13
+- **libWrapper Dependency**: Fixed module ID to use correct hyphenated format (`lib-wrapper`)
+  - Changed from optional `dependencies` to required `requires` in module.json
+  - Foundry will now properly warn users if lib-wrapper is not installed
+- **Settings Registration**: Module settings now register before libWrapper check
+  - Prevents "not a registered setting" errors if libWrapper fails to load
+  - Ensures settings are always available even if other initialization fails
+
+### Changed
+- Module settings are now registered at the start of init hook (before dependency checks)
+- libWrapper is now explicitly listed as a required dependency in module.json
+
+### Technical
+- Code cleanup: Removed 2 unused legacy data path checks from Form Party macro
+- Improved error handling: Settings registration moved earlier in initialization sequence
+- Better dependency management: Using Foundry v13 `requires` instead of v9 `dependencies`
+
 ## [2.2.7] - 2025-10-29
 
 ### Added
