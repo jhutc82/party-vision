@@ -5,6 +5,33 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.16] - 2025-10-29
+
+### Fixed
+- **Token Lighting Lost on Deployment**: Fixed issue where directly applied token lighting was lost when deploying party
+  - **Problem**: When token lighting was set directly on a token (not from actor prototype or Active Effects), the lighting was correctly transferred to the party token, but lost when the party was deployed
+  - **Example**: Merisiel has 40 dim/20 bright red light set directly on her token → Forms party → Party token gets the lighting ✓ → Deploys party → Merisiel's token has 0 dim/0 bright (lighting lost ✗)
+  - **Root Cause**: When deploying, tokens were created from actor prototype data which doesn't include lighting set directly on tokens
+  - **Solution**: Store original token lighting in memberData when forming party, restore it when deploying
+  - **Result**: Token lighting persists through form/deploy cycles
+
+### Changed
+- **Form Party Macro**: Now stores each member's original token lighting in memberData.originalLight
+- **Deploy Party Macro**: Restores originalLight for each token if it exists and has non-zero values
+- **Console Logging**: Added debug output showing when original lighting is being restored
+
+### Technical Details
+- Original token lighting (set via token.document.light.update()) is stored separately from actor prototype lighting
+- Active Effects and equipped items (torches) continue to work through the existing lighting synchronization system
+- The originalLight property stores the complete light configuration including bright/dim ranges, color, angle, alpha, animation, and all other properties
+- Lighting restoration happens for both regular members and the leader token
+
+### How It Works
+1. **Form Party**: Captures token.document.light for each member, stores in memberData[i].originalLight
+2. **Party Active**: Lighting synchronization continues to work (torches, spells, etc.)
+3. **Deploy Party**: For each member, if originalLight exists and has light values > 0, apply it to the created token
+4. **Result**: Token lighting survives the form/deploy cycle while still supporting dynamic lighting changes
+
 ## [2.2.15] - 2025-10-29
 
 ### Fixed
