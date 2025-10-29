@@ -1232,8 +1232,6 @@ Hooks.on('deleteItem', async (item, options, userId) => {
     debouncedUpdatePartyLighting(partyToken);
   }
 });
-  }
-});
 
 /**
  * Catch-all: Watch for any actor updates that might affect lighting
