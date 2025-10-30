@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.4.0');
+  console.log('Party Vision | Initializing Enhanced Module v2.4.1');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -787,32 +787,38 @@ function renderRangeIndicator(token, memberData) {
 // COMBAT INTEGRATION - Auto-Deploy and Auto-Form
 // ==============================================
 
-// Auto-deploy on combat start
+// Auto-deploy when adding party tokens to combat
+Hooks.on('createCombatant', async (combatant, options, userId) => {
+  // Only trigger for the GM
+  if (!game.user.isGM) return;
+  if (!game.settings.get('party-vision', 'autoDeployOnCombat')) return;
+  
+  // Get the token from the combatant
+  const tokenDoc = combatant.token;
+  if (!tokenDoc) return;
+  
+  // Check if this is a party token
+  const memberData = tokenDoc.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+  
+  // Get the token object
+  const partyToken = canvas.tokens.get(tokenDoc.id);
+  if (!partyToken) return;
+  
+  console.log('Party Vision | Party token added to combat - showing deploy dialog');
+  ui.notifications.info(`Added party to combat`);
+  
+  // Show deploy dialog for this party token
+  await showDeployDialog(partyToken);
+});
+
+// Auto-deploy on combat start (legacy support for manual combat start)
 Hooks.on('updateCombat', async (combat, updateData, options, userId) => {
   // Only trigger for the GM
   if (!game.user.isGM) return;
   
-  // Check if combat is starting (round changes from undefined/0 to 1)
-  const isStarting = updateData.round === 1 && combat.previous.round !== 1;
+  // Check if combat is ending
   const isEnding = combat.round > 0 && updateData.active === false;
-  
-  if (isStarting && game.settings.get('party-vision', 'autoDeployOnCombat')) {
-    console.log('Party Vision | Combat starting - showing deploy dialog for party tokens');
-    
-    // Find party tokens on the current scene
-    const partyTokens = canvas.tokens.placeables.filter(t => 
-      t.document.getFlag('party-vision', 'memberData')
-    );
-    
-    if (partyTokens.length === 0) return;
-    
-    ui.notifications.info(`Deploy ${partyTokens.length} party token(s) for combat...`);
-    
-    // Show deploy dialog for each party token
-    for (const partyToken of partyTokens) {
-      await showDeployDialog(partyToken);
-    }
-  }
   
   if (isEnding && game.settings.get('party-vision', 'autoFormOnCombatEnd')) {
     console.log('Party Vision | Combat ending - auto-forming party');
@@ -2038,14 +2044,14 @@ async function showDeployDialog(partyToken) {
         }
         .deploy-dialog h3 {
           margin: 0 0 15px 0;
-          color: #f0f0f0;
+          color: #222;
           font-size: 1.1em;
           border-bottom: 2px solid #00ff88;
           padding-bottom: 10px;
         }
         .deploy-dialog .info-text {
           font-size: 0.9em;
-          color: #aaa;
+          color: #444;
           margin: 10px 0 15px 0;
           line-height: 1.4;
         }
@@ -2077,7 +2083,7 @@ async function showDeployDialog(partyToken) {
         }
         .direction-btn i {
           font-size: 28px;
-          color: #f0f0f0;
+          color: #333;
         }
         .direction-btn.empty {
           visibility: hidden;
@@ -2187,12 +2193,15 @@ async function showSplitPartyDialog(partyToken) {
   // Build member selection checkboxes
   const memberCheckboxes = memberData.map((member, index) => {
     const isLeader = member.isLeader ? ' <span style="color: #00ff88;">(Leader)</span>' : '';
+    const actor = game.actors.get(member.actorId);
+    const memberImg = member.img || actor?.img || "icons/svg/mystery-man.svg";
+    
     return `
       <div style="padding: 8px; background: rgba(0,0,0,0.3); margin: 5px 0; border-radius: 4px;">
         <label style="cursor: pointer; display: flex; align-items: center;">
           <input type="checkbox" class="member-checkbox" data-index="${index}" style="margin-right: 10px;">
-          <img src="${member.img}" style="width: 32px; height: 32px; border: none; border-radius: 4px; margin-right: 10px;">
-          <span>${member.name}${isLeader}</span>
+          <img src="${memberImg}" style="width: 32px; height: 32px; border: none; border-radius: 4px; margin-right: 10px;">
+          <span style="color: #ddd;">${member.name}${isLeader}</span>
         </label>
       </div>
     `;
@@ -2208,14 +2217,14 @@ async function showSplitPartyDialog(partyToken) {
         }
         .split-dialog h3 {
           margin: 0 0 15px 0;
-          color: #f0f0f0;
+          color: #222;
           font-size: 1.1em;
           border-bottom: 2px solid #00ff88;
           padding-bottom: 10px;
         }
         .split-dialog .info-text {
           font-size: 0.9em;
-          color: #aaa;
+          color: #444;
           margin: 10px 0;
           line-height: 1.4;
         }
@@ -2494,6 +2503,12 @@ async function createSplitPartyToken(originalToken, members, gridSpot) {
   const originalName = originalToken.document.name;
   const originalImg = originalToken.document.texture.src;
   
+  // If only one member, just deploy them
+  if (members.length === 1) {
+    await deploySelectedMembers(originalToken, members, gridSpot);
+    return;
+  }
+  
   // Calculate average position for the new party members
   const avgX = members.reduce((sum, m) => sum + (m.dx || 0), 0) / members.length;
   const avgY = members.reduce((sum, m) => sum + (m.dy || 0), 0) / members.length;
@@ -2505,40 +2520,163 @@ async function createSplitPartyToken(originalToken, members, gridSpot) {
     dy: (m.dy || 0) - Math.round(avgY)
   }));
   
-  // Find the leader in the new party
-  let newLeader = recenteredMembers.find(m => m.isLeader);
-  if (!newLeader) {
-    newLeader = recenteredMembers[0];
-    newLeader.isLeader = true;
+  // Find the leader in the new party (or default to first member)
+  let leaderIndex = recenteredMembers.findIndex(m => m.isLeader);
+  if (leaderIndex === -1) {
+    leaderIndex = 0;
   }
   
-  // Create token data for new party
-  const newPartyData = {
-    name: `${originalName} (Split)`,
-    x: x,
-    y: y,
-    img: originalImg,
-    width: 1,
-    height: 1,
-    flags: {
-      'party-vision': {
-        memberData: recenteredMembers,
-        lastFacing: -Math.PI / 2  // Default north facing
+  // Build leader options
+  const leaderOptions = recenteredMembers.map((m, idx) => {
+    const isSelected = idx === leaderIndex;
+    let label = m.name;
+    if (idx === leaderIndex) label += ' (Current)';
+    return `<option value="${idx}"${isSelected ? ' selected' : ''}>${label}</option>`;
+  }).join('');
+  
+  // Show configuration dialog for the new party
+  new Dialog({
+    title: "Configure New Party",
+    content: `
+      <form class="pv-new-party">
+        <div class="form-group">
+          <label>Party Name</label>
+          <input type="text" name="partyName" value="${originalName} (Split)" placeholder="Enter party name...">
+        </div>
+        
+        <div class="form-group">
+          <label>Party Token Image</label>
+          <div class="pv-image-picker-section">
+            <div class="pv-image-preview-container">
+              <div class="pv-image-preview" id="partyImagePreview">
+                <img src="${originalImg}" alt="Party Token">
+              </div>
+              <div class="pv-input-row">
+                <input type="text" name="partyImage" id="partyImageInput" value="${originalImg}">
+                <button type="button" class="file-picker" data-type="imagevideo" data-target="partyImage">
+                  <i class="fas fa-file-import"></i> Browse
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>Party Leader</label>
+          <select name="leaderIndex">
+            ${leaderOptions}
+          </select>
+        </div>
+      </form>
+    `,
+    buttons: {
+      create: {
+        label: '<i class="fas fa-users-cog"></i> Create Party',
+        callback: async (html) => {
+          const partyName = html.find('[name="partyName"]').val() || `${originalName} (Split)`;
+          const partyImage = html.find('[name="partyImage"]').val() || originalImg;
+          const selectedLeaderIndex = parseInt(html.find('[name="leaderIndex"]').val()) || 0;
+          
+          // Update leader status
+          recenteredMembers.forEach((m, idx) => {
+            m.isLeader = idx === selectedLeaderIndex;
+          });
+          
+          // Calculate natural facing for the new party based on member positions relative to leader
+          const leader = recenteredMembers[selectedLeaderIndex];
+          const nonLeaderMembers = recenteredMembers.filter((_, idx) => idx !== selectedLeaderIndex);
+          let avgNonLeaderX = 0;
+          let avgNonLeaderY = 0;
+          
+          if (nonLeaderMembers.length > 0) {
+            for (const member of nonLeaderMembers) {
+              avgNonLeaderX += member.dx;
+              avgNonLeaderY += member.dy;
+            }
+            avgNonLeaderX /= nonLeaderMembers.length;
+            avgNonLeaderY /= nonLeaderMembers.length;
+          }
+          
+          // Determine natural facing
+          const naturalFacing = determineNaturalFacingFromOffsets(-avgNonLeaderX, -avgNonLeaderY);
+          
+          // Create token data for new party
+          const newPartyData = {
+            name: partyName,
+            x: x,
+            y: y,
+            texture: { src: partyImage },
+            width: 1,
+            height: 1,
+            flags: {
+              'party-vision': {
+                memberData: recenteredMembers,
+                naturalFacing: naturalFacing
+              }
+            }
+          };
+          
+          // Create the new party token
+          const [newPartyDoc] = await canvas.scene.createEmbeddedDocuments("Token", [newPartyData]);
+          const newPartyToken = canvas.tokens.get(newPartyDoc.id);
+          
+          // Update lighting for the new party token
+          await updatePartyLightingFromActors(newPartyToken);
+          
+          // Redraw the new party token to show portraits
+          if (newPartyToken) {
+            newPartyToken.renderFlags.set({ redraw: true });
+          }
+          
+          ui.notifications.info(`Created new party: ${partyName}`);
+        }
+      },
+      cancel: {
+        label: '<i class="fas fa-times"></i> Cancel',
+        callback: () => {}
       }
+    },
+    default: "create",
+    render: (html) => {
+      const imageInput = html.find('#partyImageInput');
+      const imagePreview = html.find('#partyImagePreview');
+      
+      // Function to update image preview
+      const updatePreview = (path) => {
+        if (path && path.trim() !== '') {
+          imagePreview.html(`<img src="${path}" alt="Party Token" onerror="this.parentElement.innerHTML='<div class=\\'pv-image-preview-placeholder\\'>Invalid image</div>'">`);
+        } else {
+          imagePreview.html('<div class="pv-image-preview-placeholder">No preview</div>');
+        }
+      };
+      
+      // Update preview when input changes
+      imageInput.on('input change', (event) => {
+        updatePreview(event.target.value);
+      });
+      
+      // Add file picker functionality
+      html.find('.file-picker').on('click', (event) => {
+        const button = event.currentTarget;
+        const target = button.dataset.target;
+        const inputField = html.find(`[name="${target}"]`)[0];
+        
+        const fp = new FilePicker({
+          type: "imagevideo",
+          current: inputField.value,
+          callback: (path) => {
+            inputField.value = path;
+            updatePreview(path);
+            imageInput.trigger('change');
+          }
+        });
+        fp.browse();
+      });
     }
-  };
-  
-  // Create the new party token
-  const [newPartyDoc] = await canvas.scene.createEmbeddedDocuments("Token", [newPartyData]);
-  const newPartyToken = canvas.tokens.get(newPartyDoc.id);
-  
-  // Update lighting for the new party token
-  await updatePartyLightingFromActors(newPartyToken);
-  
-  // Redraw the new party token to show portraits
-  if (newPartyToken) {
-    newPartyToken.renderFlags.set({ redraw: true });
-  }
+  }, {
+    width: 500,
+    classes: ["dialog", "party-vision-dialog"]
+  }).render(true);
 }
 
 /**
@@ -2600,6 +2738,12 @@ async function deploySelectedMembers(partyToken, members, gridSpot) {
       name: protoToken.name || actor.name,
       img: protoToken.texture?.src || actor.img
     };
+    
+    // Restore original token lighting if it was stored
+    if (member.originalLight && (member.originalLight.bright > 0 || member.originalLight.dim > 0)) {
+      console.log(`Party Vision | Restoring lighting for ${member.name}: bright=${member.originalLight.bright}, dim=${member.originalLight.dim}`);
+      newToken.light = member.originalLight;
+    }
     
     delete newToken.actorData;
     delete newToken.delta;
@@ -2685,11 +2829,18 @@ async function deployParty(partyToken, radians, fromCombat = false) {
   const gridSize = canvas.grid.size;
   const assignedGridSpots = new Set();
   
-  // Get the original facing direction (default is North = -π/2)
-  const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
+  // Get the formation's natural facing direction (the direction it was facing when formed)
+  // This is stored as a string ('north', 'east', 'south', 'west') and needs to be converted to radians
+  const naturalFacingStr = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
+  const naturalFacingRadians = {
+    'north': -Math.PI / 2,
+    'east': 0,
+    'south': Math.PI / 2,
+    'west': Math.PI
+  }[naturalFacingStr] || (-Math.PI / 2);
   
-  // Calculate the rotation needed: target direction - original direction
-  const rotationAngle = radians - lastFacing;
+  // Calculate the rotation needed: target direction - natural facing direction
+  const rotationAngle = radians - naturalFacingRadians;
   
   const cos = Math.cos(rotationAngle);
   const sin = Math.sin(rotationAngle);
@@ -2907,6 +3058,31 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   }
   
   return true;
+}
+
+/**
+ * Determine which direction is "forward" based on the leader's position relative to the group
+ * @param {number} dx - X component of vector from group center to leader
+ * @param {number} dy - Y component of vector from group center to leader
+ * @returns {string} Direction: 'north', 'east', 'south', or 'west'
+ */
+function determineNaturalFacingFromOffsets(dx, dy) {
+  // If leader is isolated (no other members), default to north
+  if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) {
+    return 'north';
+  }
+  
+  // Determine primary direction based on which component is larger
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  
+  if (absX > absY) {
+    // Horizontal orientation dominates
+    return dx > 0 ? 'east' : 'west';
+  } else {
+    // Vertical orientation dominates
+    return dy > 0 ? 'south' : 'north';
+  }
 }
 
 // Export for use by macros
