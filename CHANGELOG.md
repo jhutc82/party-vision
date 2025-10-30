@@ -5,6 +5,47 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.18] - 2025-10-30
+
+### Added
+- **Formation Preset Selection**: When forming a party, you can now choose from formation presets
+  - Standard: Default formation as positioned
+  - Tight (50%): Compress formation spacing to 50%
+  - Wide (150%): Expand formation spacing to 150%
+  - Column: Single-file line formation
+  - Line: Horizontal line formation
+  - Wedge: V-shaped battle formation
+  
+- **Last Used Formation Memory**: The module remembers your last used formation preset
+  - When forming a new party, "Last Used: [Formation Name]" appears as an option
+  - Automatically selected as the default if available
+  - Streamlines repeated party formations with the same layout
+  - Saved per world, persists across sessions
+
+### Fixed
+- **Duplicate Function Declaration**: Removed duplicate `cycleLightSource` function that caused syntax error on module load
+
+### User Experience
+**Formation Selection Flow:**
+1. Select tokens to form party
+2. Configure party name, image, and leader (as before)
+3. **NEW**: Choose formation preset from dropdown
+4. "Last Used: [Formation Name]" appears at top of list if you've formed parties before
+5. Formation is automatically applied to token positioning
+6. Your choice is saved for next time
+
+**Example Use Cases:**
+- **Dungeon Crawl**: Use "Column" for narrow corridors, then "Standard" when entering rooms
+- **Combat Prep**: Quick switch to "Wedge" formation when approaching combat
+- **Travel**: Use "Line" for road travel, formation is remembered for next travel day
+- **Space Management**: "Tight" formation in crowded spaces, "Wide" in open areas
+
+### Technical Details
+- Added `lastUsedFormation` game setting to store most recent formation choice
+- Modified Form Party macro to include formation selection UI
+- Formation presets now applied during party creation via transform functions
+- Backward compatible: existing parties continue to work without changes
+
 ## [2.2.17] - 2025-10-29
 
 ### Added

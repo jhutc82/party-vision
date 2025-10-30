@@ -141,6 +141,15 @@ Hooks.once('init', () => {
     default: {}
   });
 
+  game.settings.register('party-vision', 'lastUsedFormation', {
+    name: "Last Used Formation",
+    hint: "Remembers the last formation preset used when forming a party.",
+    scope: 'world',
+    config: false,
+    type: String,
+    default: ''
+  });
+
   game.settings.register('party-vision', 'calculateMovement', {
     name: "Calculate Movement Capabilities",
     hint: "Automatically calculate party movement speed and types based on members. Disable if this causes issues with your game system.",
