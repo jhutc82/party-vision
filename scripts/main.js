@@ -16,6 +16,33 @@ const SPIRAL_SEARCH_MAX_RADIUS = 20;
 const WALL_COLLISION_TEST_OFFSET = 5; // pixels from edge for collision testing
 
 // ==============================================
+// WALL COLLISION DETECTION STRATEGY
+// ==============================================
+// The module uses a comprehensive multi-layer approach to detect wall collisions:
+//
+// 1. EDGE INTERSECTION: Checks if any wall segment intersects the token's
+//    four bounding edges (top, right, bottom, left). This catches walls that
+//    cross through the token's perimeter.
+//
+// 2. ENDPOINT CONTAINMENT: Checks if either wall endpoint is inside the token's
+//    bounding box. This catches walls that start or end within the token.
+//
+// 3. INTERIOR POINT TESTING: Tests 5 points (center + 4 inset corners) with
+//    tiny test lines to detect walls entirely within large tokens.
+//
+// This multi-layer approach ensures:
+// - No false negatives (tokens placed through walls)
+// - Minimal false positives (tokens rejected unnecessarily)
+// - Performance optimization (wall checks only on placement, not continuous)
+// - Foundry v13 API compliance (uses foundry.utils.lineSegmentIntersects)
+//
+// Why this is better than single-method approaches:
+// - Point testing alone: Misses walls between test points
+// - Edge testing alone: Misses walls entirely within token
+// - Combined approach: Catches all wall collision scenarios
+// ==============================================
+
+// ==============================================
 // GLOBAL STATE
 // ==============================================
 
@@ -33,7 +60,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.3.5');
+  console.log('Party Vision | Initializing Enhanced Module v2.4.1');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -2009,7 +2036,7 @@ async function collectAvailableLights(partyToken, memberData) {
 // ==============================================
 
 /**
- * Shows the deploy party dialog to select direction
+ * Shows the deploy party dialog to select direction and members
  * @param {Token} partyToken - The party token to deploy
  * @returns {Promise<void>}
  */
@@ -2023,97 +2050,182 @@ async function showDeployDialog(partyToken) {
   // Find the leader
   const leaderData = memberData.find(m => m.isLeader) || memberData[0];
 
-  // Show deployment dialog with direction options
+  // Build member checkboxes for selection
+  const memberCheckboxes = memberData.map((member, index) => {
+    const isLeader = member.isLeader || index === 0;
+    return `
+      <div class="pv-member-row" style="display: flex; align-items: center; padding: 8px; border-radius: 3px; margin-bottom: 4px; background: rgba(0,0,0,0.2);">
+        <input type="checkbox" class="pv-member-checkbox" data-index="${index}" 
+               style="margin-right: 10px; cursor: pointer;" checked>
+        <label style="flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px;" for="member-${index}">
+          <span style="font-weight: ${isLeader ? 'bold' : 'normal'};">
+            ${member.name}${isLeader ? ' 👑' : ''}
+          </span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  // Build formation options (excluding Custom)
+  const FORMATION_PRESETS_LOCAL = FORMATION_PRESETS || {};
+  const formationOptions = Object.entries(FORMATION_PRESETS_LOCAL)
+    .filter(([key]) => key !== 'custom')  // Exclude Custom formation
+    .map(([key, preset]) => `<option value="${key}">${preset.name}</option>`)
+    .join('');
+
+  // Show enhanced deployment dialog
   new Dialog({
-    title: `Deploy Party (Leader: ${leaderData.name})`,
+    title: `Deploy Party`,
     content: `
-      <div style="padding: 10px;">
-        <h3 style="margin-top: 0;">Leader: ${leaderData.name}</h3>
-        <p>Choose deployment direction:</p>
-        <p style="font-size: 0.9em; color: #999; margin: 10px 0;">
-          The formation will maintain its shape, oriented in the chosen direction.
-        </p>
-        <div class="direction-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 15px auto; max-width: 200px;">
-          <div class="direction-btn empty" style="visibility: hidden;"></div>
-          <div class="direction-btn" data-direction="north" title="North" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
-            <i class="fas fa-arrow-up" style="font-size: 24px;"></i>
+      <div class="pv-deploy-dialog">
+        <!-- Member Selection Section -->
+        <div class="pv-section">
+          <h3 class="pv-section-header">
+            <i class="fas fa-users"></i> Select Members to Deploy
+          </h3>
+          <div class="pv-help-text" style="margin-bottom: 12px;">
+            Choose which party members to deploy. Uncheck members to keep them in a new party token.
           </div>
-          <div class="direction-btn empty" style="visibility: hidden;"></div>
-          <div class="direction-btn" data-direction="west" title="West" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
-            <i class="fas fa-arrow-left" style="font-size: 24px;"></i>
+          <div class="pv-member-list" style="max-height: 200px; overflow-y: auto; padding: 5px;">
+            ${memberCheckboxes}
           </div>
-          <div class="direction-btn empty" style="visibility: hidden;"></div>
-          <div class="direction-btn" data-direction="east" title="East" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
-            <i class="fas fa-arrow-right" style="font-size: 24px;"></i>
+          <div class="pv-selection-controls" style="margin-top: 10px; display: flex; gap: 8px;">
+            <button type="button" class="pv-btn-secondary" id="pv-select-all">
+              <i class="fas fa-check-square"></i> Select All
+            </button>
+            <button type="button" class="pv-btn-secondary" id="pv-select-none">
+              <i class="fas fa-square"></i> Select None
+            </button>
           </div>
-          <div class="direction-btn empty" style="visibility: hidden;"></div>
-          <div class="direction-btn" data-direction="south" title="South" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
-            <i class="fas fa-arrow-down" style="font-size: 24px;"></i>
+        </div>
+
+        <div class="pv-divider"></div>
+
+        <!-- Deployment Options Section -->
+        <div class="pv-section">
+          <h3 class="pv-section-header">
+            <i class="fas fa-compass"></i> Deployment Direction
+          </h3>
+          <div class="pv-help-text" style="margin-bottom: 12px;">
+            The formation will maintain its shape, oriented in the chosen direction.
           </div>
-          <div class="direction-btn empty" style="visibility: hidden;"></div>
+          <div class="pv-direction-grid">
+            <div class="pv-direction-btn empty"></div>
+            <div class="pv-direction-btn" data-direction="north" title="North">
+              <i class="fas fa-arrow-up"></i>
+            </div>
+            <div class="pv-direction-btn empty"></div>
+            <div class="pv-direction-btn" data-direction="west" title="West">
+              <i class="fas fa-arrow-left"></i>
+            </div>
+            <div class="pv-direction-btn empty"></div>
+            <div class="pv-direction-btn" data-direction="east" title="East">
+              <i class="fas fa-arrow-right"></i>
+            </div>
+            <div class="pv-direction-btn empty"></div>
+            <div class="pv-direction-btn" data-direction="south" title="South">
+              <i class="fas fa-arrow-down"></i>
+            </div>
+            <div class="pv-direction-btn empty"></div>
+          </div>
+        </div>
+
+        <!-- New Party Formation Section (shown when some members not selected) -->
+        <div class="pv-section" id="pv-new-party-section" style="display: none;">
+          <div class="pv-divider" style="margin: 20px 0;"></div>
+          <h3 class="pv-section-header">
+            <i class="fas fa-users-cog"></i> Remaining Members
+          </h3>
+          <div class="pv-help-text" style="margin-bottom: 12px;">
+            Unselected members will form a new party token at the current location.
+          </div>
+          <div class="pv-form-group">
+            <label>Formation for New Party</label>
+            <select id="pv-new-party-formation" class="pv-select">
+              ${formationOptions}
+            </select>
+          </div>
         </div>
       </div>
     `,
     buttons: {
       deploy: {
-        label: "Deploy",
+        icon: '<i class="fas fa-play"></i>',
+        label: "Deploy Selected",
         callback: async (html) => {
-          const selectedDirection = html.find('.direction-btn.selected').data('direction') || 'north';
-          
-          // Convert direction string to radians
+          const selectedIndices = [];
+          html.find('.pv-member-checkbox:checked').each(function() {
+            selectedIndices.push(parseInt($(this).data('index')));
+          });
+
+          if (selectedIndices.length === 0) {
+            ui.notifications.warn("Please select at least one member to deploy.");
+            return;
+          }
+
+          const selectedDirection = html.find('.pv-direction-btn.selected').data('direction') || 'north';
           const directionRadians = {
             'north': -Math.PI / 2,
             'east': 0,
             'south': Math.PI / 2,
             'west': Math.PI
           };
-          
           const radians = directionRadians[selectedDirection];
-          await deployParty(partyToken, radians, true);
+
+          // Check if we need to create a new party from remaining members
+          if (selectedIndices.length < memberData.length) {
+            const newPartyFormation = html.find('#pv-new-party-formation').val() || 'tight';
+            await deployPartyWithSplit(partyToken, radians, selectedIndices, newPartyFormation);
+          } else {
+            // Deploy all members normally
+            await deployParty(partyToken, radians, true);
+          }
         }
       },
-      cancel: { label: "Cancel" }
+      cancel: { 
+        icon: '<i class="fas fa-times"></i>',
+        label: "Cancel" 
+      }
     },
     default: "deploy",
     render: (html) => {
-      html.find('.direction-btn:not(.empty)').on('click', function() {
-        html.find('.direction-btn').removeClass('selected');
+      // Member checkbox handling
+      const updateNewPartySection = () => {
+        const totalMembers = html.find('.pv-member-checkbox').length;
+        const selectedMembers = html.find('.pv-member-checkbox:checked').length;
+        const newPartySection = html.find('#pv-new-party-section');
+        
+        if (selectedMembers < totalMembers && selectedMembers > 0) {
+          newPartySection.slideDown(200);
+        } else {
+          newPartySection.slideUp(200);
+        }
+      };
+
+      html.find('.pv-member-checkbox').on('change', updateNewPartySection);
+      
+      // Select all / none buttons
+      html.find('#pv-select-all').on('click', () => {
+        html.find('.pv-member-checkbox').prop('checked', true);
+        updateNewPartySection();
+      });
+      
+      html.find('#pv-select-none').on('click', () => {
+        html.find('.pv-member-checkbox').prop('checked', false);
+        updateNewPartySection();
+      });
+
+      // Direction button handling
+      html.find('.pv-direction-btn:not(.empty)').on('click', function() {
+        html.find('.pv-direction-btn').removeClass('selected');
         $(this).addClass('selected');
-        $(this).css({
-          'border-color': '#00ff88',
-          'background': 'rgba(0, 255, 136, 0.2)'
-        });
       });
       
       // Select north by default
-      const defaultBtn = html.find('.direction-btn[data-direction="north"]');
-      defaultBtn.addClass('selected');
-      defaultBtn.css({
-        'border-color': '#00ff88',
-        'background': 'rgba(0, 255, 136, 0.2)'
-      });
+      html.find('.pv-direction-btn[data-direction="north"]').addClass('selected');
       
-      // Add hover effects
-      html.find('.direction-btn:not(.empty)').hover(
-        function() {
-          if (!$(this).hasClass('selected')) {
-            $(this).css({
-              'border-color': '#0088ff',
-              'background': 'rgba(0, 136, 255, 0.2)',
-              'transform': 'scale(1.05)'
-            });
-          }
-        },
-        function() {
-          if (!$(this).hasClass('selected')) {
-            $(this).css({
-              'border-color': '#444',
-              'background': 'rgba(0, 0, 0, 0.3)',
-              'transform': 'scale(1)'
-            });
-          }
-        }
-      );
+      // Initialize the new party section visibility
+      updateNewPartySection();
     }
   }).render(true);
 }
@@ -2247,6 +2359,370 @@ async function deployParty(partyToken, radians, fromCombat = false) {
 }
 
 /**
+ * Deploys selected members and creates a new party from remaining members
+ * @param {Token} partyToken - The party token to deploy
+ * @param {number} radians - Direction to face (in radians)
+ * @param {Array<number>} selectedIndices - Indices of members to deploy
+ * @param {string} newPartyFormation - Formation preset for the new party
+ * @returns {Promise<void>}
+ */
+async function deployPartyWithSplit(partyToken, radians, selectedIndices, newPartyFormation) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  const gridSize = canvas.grid.size;
+  const assignedGridSpots = new Set();
+  
+  // Separate selected and remaining members
+  const selectedMembers = [];
+  const remainingMembers = [];
+  
+  memberData.forEach((member, index) => {
+    if (selectedIndices.includes(index)) {
+      selectedMembers.push(member);
+    } else {
+      remainingMembers.push(member);
+    }
+  });
+
+  if (selectedMembers.length === 0) {
+    ui.notifications.warn("No members selected to deploy.");
+    return;
+  }
+
+  // Get the original facing direction
+  const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
+  const rotationAngle = -(radians - lastFacing);
+  const cos = Math.cos(rotationAngle);
+  const sin = Math.sin(rotationAngle);
+  
+  const newTokensData = [];
+  const finalPositions = [];
+  const shouldAnimate = game.settings.get('party-vision', 'animateDeployment');
+  
+  // Sort selected members by distance from center
+  const sortedSelected = [...selectedMembers].sort((a, b) => 
+    (Math.abs(a.dx) + Math.abs(a.dy)) - (Math.abs(b.dx) + Math.abs(b.dy))
+  );
+  
+  // Deploy selected members
+  for (const member of sortedSelected) {
+    let actor;
+    if (member.actorUuid) {
+      try {
+        actor = await fromUuid(member.actorUuid);
+      } catch (e) {
+        console.warn(`Party Vision: Could not resolve actor UUID ${member.actorUuid}`, e);
+      }
+    }
+    
+    if (!actor) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) {
+      console.warn(`Party Vision: Actor not found for member ${member.name || member.actorId}`);
+      continue;
+    }
+    
+    const dx = member.dx;
+    const dy = member.dy;
+    const rotatedX = Math.round(dx * cos - dy * sin);
+    const rotatedY = Math.round(dx * sin + dy * cos);
+    
+    const partyGridX = partyToken.x / gridSize;
+    const partyGridY = partyToken.y / gridSize;
+    const idealGridX = Math.round(partyGridX + rotatedX);
+    const idealGridY = Math.round(partyGridY + rotatedY);
+    
+    const protoToken = actor.prototypeToken;
+    const tokenData = protoToken.toObject();
+    
+    const validSpot = findValidSpot(idealGridX, idealGridY, tokenData, assignedGridSpots);
+    assignedGridSpots.add(`${validSpot.x},${validSpot.y}`);
+    
+    const finalX = validSpot.x * gridSize;
+    const finalY = validSpot.y * gridSize;
+    
+    const newToken = {
+      ...tokenData,
+      x: shouldAnimate ? partyToken.x : finalX,
+      y: shouldAnimate ? partyToken.y : finalY,
+      actorId: actor.id,
+      actorLink: protoToken.actorLink,
+      name: protoToken.name || actor.name,
+      img: protoToken.texture?.src || actor.img
+    };
+    
+    delete newToken.actorData;
+    delete newToken.delta;
+    
+    newTokensData.push(newToken);
+    
+    if (shouldAnimate) {
+      finalPositions.push({ x: finalX, y: finalY });
+    }
+  }
+  
+  // Create the deployed tokens
+  const createdTokens = await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
+  
+  // Animate deployed tokens
+  if (shouldAnimate) {
+    const animationSpeed = game.settings.get('party-vision', 'deploymentAnimationSpeed');
+    const animations = [];
+    
+    for (let i = 0; i < createdTokens.length; i++) {
+      const tokenDoc = createdTokens[i];
+      const token = canvas.tokens.get(tokenDoc.id);
+      const finalPos = finalPositions[i];
+      
+      if (token && finalPos) {
+        animations.push(
+          token.document.update({ x: finalPos.x, y: finalPos.y }, { animate: true, animation: { duration: animationSpeed } })
+        );
+      }
+    }
+    
+    await Promise.all(animations);
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  // Create new party token from remaining members if any
+  if (remainingMembers.length > 0) {
+    // Find a new leader from remaining members (prefer the previous leader if still in the group)
+    let newLeader = remainingMembers.find(m => m.isLeader);
+    if (!newLeader) {
+      newLeader = remainingMembers[0];
+      // Mark the new leader
+      remainingMembers.forEach(m => m.isLeader = false);
+      newLeader.isLeader = true;
+    }
+    
+    // Apply formation preset to remaining members
+    const FORMATIONS = window.PartyVision?.FORMATION_PRESETS || FORMATION_PRESETS;
+    const formation = FORMATIONS[newPartyFormation];
+    
+    if (formation && formation.transform) {
+      remainingMembers.forEach((member, index) => {
+        if (!member.isLeader) {
+          const transformed = formation.transform(member.dx, member.dy, index, remainingMembers.length);
+          member.dx = transformed.dx;
+          member.dy = transformed.dy;
+        }
+      });
+    }
+    
+    // Get party token properties
+    const partyName = partyToken.name || "The Party";
+    const partyImage = partyToken.document.texture?.src || "icons/svg/users.svg";
+    const maxWidth = partyToken.document.width;
+    const maxHeight = partyToken.document.height;
+    const naturalFacing = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
+    const movementData = partyToken.document.getFlag('party-vision', 'movement') || { speed: 30, types: [], units: 'ft', calculated: false };
+    
+    // Collect lighting from remaining member tokens
+    const memberLights = await collectMemberLighting(remainingMembers);
+    
+    // Find a valid adjacent spot for the new party token
+    const partyGridX = Math.round(partyToken.x / gridSize);
+    const partyGridY = Math.round(partyToken.y / gridSize);
+    
+    // Create temporary token data for validation
+    const tempTokenData = {
+      width: maxWidth,
+      height: maxHeight
+    };
+    
+    // Find valid spot adjacent to original party (exclude original position)
+    const newPartySpot = findAdjacentValidSpot(partyGridX, partyGridY, tempTokenData, assignedGridSpots);
+    const newPartyX = newPartySpot.x * gridSize;
+    const newPartyY = newPartySpot.y * gridSize;
+    
+    // Create new party token data
+    const newPartyTokenData = {
+      name: `${partyName} (Split)`,
+      x: newPartyX,
+      y: newPartyY,
+      texture: { src: partyImage },
+      width: maxWidth,
+      height: maxHeight,
+      sight: {
+        enabled: true,
+        range: 0,
+        angle: 360,
+        visionMode: "basic"
+      },
+      light: memberLights.aggregated,
+      displayName: CONST.TOKEN_DISPLAY_MODES.ALWAYS,
+      actorLink: false,
+      disposition: CONST.TOKEN_DISPOSITIONS.FRIENDLY,
+      ring: { enabled: false },
+      ownership: partyToken.document.ownership,
+      flags: {
+        "party-vision": {
+          "memberData": remainingMembers,
+          "naturalFacing": naturalFacing,
+          "movement": movementData,
+          "availableLights": memberLights.available,
+          "activeLightIndex": -1
+        }
+      }
+    };
+    
+    // Create the new party token
+    await canvas.scene.createEmbeddedDocuments("Token", [newPartyTokenData]);
+    
+    ui.notifications.info(`Deployed ${selectedMembers.length} member(s) and created new party with ${remainingMembers.length} remaining member(s)!`);
+  } else {
+    ui.notifications.info(`Deployed all ${selectedMembers.length} member(s)!`);
+  }
+  
+  // Delete original party token
+  await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+}
+
+/**
+ * Helper function to collect lighting from members
+ * @param {Array} memberData - Array of member data
+ * @returns {Promise<Object>} Object with aggregated and available lights
+ */
+async function collectMemberLighting(memberData) {
+  const memberLights = [];
+  const availableLights = [];
+  
+  for (const member of memberData) {
+    let actor;
+    if (member.actorUuid) {
+      try {
+        actor = await fromUuid(member.actorUuid);
+      } catch (e) {
+        console.warn(`Party Vision: Could not resolve actor UUID ${member.actorUuid}`, e);
+      }
+    }
+    
+    if (!actor) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) continue;
+    
+    const protoToken = actor.prototypeToken;
+    if (protoToken.light && (protoToken.light.bright > 0 || protoToken.light.dim > 0)) {
+      const lightData = {
+        bright: protoToken.light.bright || 0,
+        dim: protoToken.light.dim || 0,
+        angle: protoToken.light.angle || 360,
+        color: protoToken.light.color,
+        alpha: protoToken.light.alpha || 0.5,
+        animation: protoToken.light.animation || {},
+        coloration: protoToken.light.coloration || 1,
+        luminosity: protoToken.light.luminosity || 0.5,
+        attenuation: protoToken.light.attenuation || 0.5,
+        contrast: protoToken.light.contrast || 0,
+        saturation: protoToken.light.saturation || 0,
+        shadows: protoToken.light.shadows || 0
+      };
+      
+      memberLights.push(lightData);
+      availableLights.push({
+        actorId: actor.id,
+        actorName: actor.name,
+        light: lightData
+      });
+    }
+  }
+  
+  // Aggregate lighting
+  let aggregatedLight = {
+    bright: 0,
+    dim: 0,
+    angle: 360,
+    color: null,
+    alpha: 0.5,
+    animation: {},
+    coloration: 1,
+    luminosity: 0.5,
+    attenuation: 0.5,
+    contrast: 0,
+    saturation: 0,
+    shadows: 0
+  };
+  
+  if (memberLights.length > 0) {
+    if (memberLights.length === 1) {
+      aggregatedLight = memberLights[0];
+    } else {
+      let brightestLight = memberLights[0];
+      let maxRange = memberLights[0].bright + memberLights[0].dim;
+      
+      for (let i = 1; i < memberLights.length; i++) {
+        const range = memberLights[i].bright + memberLights[i].dim;
+        if (range > maxRange) {
+          maxRange = range;
+          brightestLight = memberLights[i];
+        }
+      }
+      
+      aggregatedLight = brightestLight;
+    }
+  }
+  
+  return {
+    aggregated: aggregatedLight,
+    available: availableLights
+  };
+}
+
+/**
+ * Finds a valid adjacent spot for token placement, preferring nearby positions
+ * @param {number} centerX - Center grid X coordinate (position to avoid)
+ * @param {number} centerY - Center grid Y coordinate (position to avoid)
+ * @param {Object} tokenData - Token data object
+ * @param {Set} assignedSpots - Set of already assigned grid positions
+ * @returns {{x: number, y: number}} Valid grid coordinates
+ */
+function findAdjacentValidSpot(centerX, centerY, tokenData, assignedSpots) {
+  // Mark the center position as occupied (don't place on top of original)
+  const centerKey = `${centerX},${centerY}`;
+  const tempAssignedSpots = new Set([...assignedSpots, centerKey]);
+  
+  // Try adjacent positions first (immediate neighbors)
+  const adjacentPositions = [
+    { x: centerX + 1, y: centerY },     // Right
+    { x: centerX - 1, y: centerY },     // Left
+    { x: centerX, y: centerY + 1 },     // Down
+    { x: centerX, y: centerY - 1 },     // Up
+    { x: centerX + 1, y: centerY + 1 }, // Diagonal: Down-Right
+    { x: centerX + 1, y: centerY - 1 }, // Diagonal: Up-Right
+    { x: centerX - 1, y: centerY + 1 }, // Diagonal: Down-Left
+    { x: centerX - 1, y: centerY - 1 }  // Diagonal: Up-Left
+  ];
+  
+  // Check adjacent positions first
+  for (const pos of adjacentPositions) {
+    if (isSpotValid(pos.x, pos.y, tokenData, tempAssignedSpots)) {
+      return pos;
+    }
+  }
+  
+  // If no adjacent spot found, use spiral search starting from radius 2
+  for (let r = 2; r < SPIRAL_SEARCH_MAX_RADIUS; r++) {
+    for (let x = centerX - r; x <= centerX + r; x++) {
+      for (let y = centerY - r; y <= centerY + r; y++) {
+        // Only check perimeter of current radius
+        if (Math.abs(x - centerX) !== r && Math.abs(y - centerY) !== r) continue;
+        if (isSpotValid(x, y, tokenData, tempAssignedSpots)) {
+          return { x, y };
+        }
+      }
+    }
+  }
+  
+  // Last resort: place at an offset position even if not ideal
+  console.warn(`Party Vision | No adjacent valid spot found near (${centerX}, ${centerY}), placing at offset`);
+  return { x: centerX + 1, y: centerY + 1 };
+}
+
+/**
  * Finds a valid unoccupied spot for token placement using spiral search
  * @param {number} idealX - Ideal grid X coordinate
  * @param {number} idealY - Ideal grid Y coordinate
@@ -2296,35 +2772,63 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   const centerY = finalY + (tokenHeight / 2);
   
   // Check for wall collisions using v13 API
-  // Test multiple points around the token to ensure it doesn't pass through walls
-  const testPoints = [
-    { x: centerX, y: centerY },                                                         // Center
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },                     // Top-left corner
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },        // Top-right corner
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET },       // Bottom-left corner
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET } // Bottom-right corner
+  // Check if any wall segment intersects with the token's boundary rectangle
+  const tokenEdges = [
+    // Top edge
+    { a: { x: finalX, y: finalY }, b: { x: finalX + tokenWidth, y: finalY } },
+    // Right edge
+    { a: { x: finalX + tokenWidth, y: finalY }, b: { x: finalX + tokenWidth, y: finalY + tokenHeight } },
+    // Bottom edge
+    { a: { x: finalX + tokenWidth, y: finalY + tokenHeight }, b: { x: finalX, y: finalY + tokenHeight } },
+    // Left edge
+    { a: { x: finalX, y: finalY + tokenHeight }, b: { x: finalX, y: finalY } }
   ];
   
-  // Foundry v13: Check walls manually using line segment intersection
-  for (const point of testPoints) {
-    // Create a tiny test line to check if point is inside a wall
-    const testOrigin = { x: point.x - 1, y: point.y - 1 };
-    const testDest = { x: point.x + 1, y: point.y + 1 };
+  // Also check center and inset points to detect walls entirely within the token
+  const inset = Math.min(WALL_COLLISION_TEST_OFFSET, tokenWidth / 4, tokenHeight / 4);
+  const testPoints = [
+    { x: centerX, y: centerY },                                    // Center
+    { x: finalX + inset, y: finalY + inset },                      // Top-left inset
+    { x: finalX + tokenWidth - inset, y: finalY + inset },         // Top-right inset
+    { x: finalX + inset, y: finalY + tokenHeight - inset },        // Bottom-left inset
+    { x: finalX + tokenWidth - inset, y: finalY + tokenHeight - inset } // Bottom-right inset
+  ];
+  
+  // Check against all walls that block movement
+  for (const wall of canvas.walls.placeables) {
+    // In v13, check the movement property (WALL_MOVEMENT_TYPES)
+    const wallMovement = wall.document.move ?? CONST.WALL_MOVEMENT_TYPES.NORMAL;
+    if (wallMovement === CONST.WALL_MOVEMENT_TYPES.NONE) continue;
     
-    // Check against all walls that block movement
-    for (const wall of canvas.walls.placeables) {
-      // In v13, check the movement property (WALL_MOVEMENT_TYPES)
-      const wallMovement = wall.document.move ?? CONST.WALL_MOVEMENT_TYPES.NORMAL;
-      if (wallMovement === CONST.WALL_MOVEMENT_TYPES.NONE) continue;
-      
-      // Get wall endpoints
-      const wallCoords = wall.document.c;
-      const wallA = { x: wallCoords[0], y: wallCoords[1] };
-      const wallB = { x: wallCoords[2], y: wallCoords[3] };
-      
-      // Check if test line intersects this wall
+    // Get wall endpoints
+    const wallCoords = wall.document.c;
+    const wallA = { x: wallCoords[0], y: wallCoords[1] };
+    const wallB = { x: wallCoords[2], y: wallCoords[3] };
+    
+    // Check if wall intersects any edge of the token's bounding box
+    for (const edge of tokenEdges) {
+      if (foundry.utils.lineSegmentIntersects(edge.a, edge.b, wallA, wallB)) {
+        return false; // Wall intersects token boundary
+      }
+    }
+    
+    // Also check if wall passes through the token interior
+    // (wall endpoints inside token, or token center on wall)
+    const wallAInside = (wallA.x >= finalX && wallA.x <= finalX + tokenWidth &&
+                         wallA.y >= finalY && wallA.y <= finalY + tokenHeight);
+    const wallBInside = (wallB.x >= finalX && wallB.x <= finalX + tokenWidth &&
+                         wallB.y >= finalY && wallB.y <= finalY + tokenHeight);
+    
+    if (wallAInside || wallBInside) {
+      return false; // Wall endpoint is inside token
+    }
+    
+    // Check test points to catch walls that might be entirely within large tokens
+    for (const point of testPoints) {
+      const testOrigin = { x: point.x - 0.5, y: point.y - 0.5 };
+      const testDest = { x: point.x + 0.5, y: point.y + 0.5 };
       if (foundry.utils.lineSegmentIntersects(testOrigin, testDest, wallA, wallB)) {
-        return false; // Wall blocks this position
+        return false; // Wall passes through token interior
       }
     }
   }
