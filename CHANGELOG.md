@@ -5,6 +5,39 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.5] - 2025-10-30
+
+### Fixed
+- **Wall Collision Detection**: Fixed deployment errors in Foundry v13
+  - Replaced deprecated `canvas.walls.checkCollision()` with manual wall intersection checks
+  - Now uses `foundry.utils.lineSegmentIntersects()` for v13 compatibility
+  - Properly checks `WALL_MOVEMENT_TYPES` instead of legacy wall sense types
+  - Resolves "canvas.walls.checkCollision is not a function" error
+  
+- **Combat Tracker Integration**: Fixed party members not being added to combat
+  - Now properly handles party members without deployed tokens
+  - Omits `tokenId` field when members aren't on scene (v13 requirement)
+  - Combatants can now be added before deploying the party
+  - Resolves "Added 0 combatants" issue
+
+- **Form Party Dialog Layout**: Fixed title bar width mismatch
+  - Dialog title bar now matches content width (550-700px)
+  - Added CSS for `.window-header` and entire `.window-app` sizing
+  - Eliminated visual gap between title bar and content
+
+- **Formation Selection Logic**: Improved saved custom formation defaulting
+  - If last selection was "Custom" AND saved custom exists, defaults to "Saved Custom Formation"
+  - If last selection was "Saved Custom Formation", continues to default to it
+  - Better preserves user's formation preferences between form sessions
+  - More intuitive behavior when switching between custom positioning
+
+### Technical Details
+- Wall collision now iterates through `canvas.walls.placeables` manually
+- Checks `wall.document.move` for `WALL_MOVEMENT_TYPES.NONE` to skip non-blocking walls
+- Combat combatant creation conditionally includes `tokenId` only when present
+- CSS uses `:has()` selector for Form Party dialog sizing
+- Formation default logic accounts for both 'custom' and 'saved-custom' keys
+
 ## [2.3.4] - 2025-10-30
 
 ### Changed

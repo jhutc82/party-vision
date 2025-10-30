@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.3.3');
+  console.log('Party Vision | Initializing Enhanced Module v2.3.5');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -587,12 +587,19 @@ function setupTokenHUD() {
               // Find the actor's token on the scene (if deployed)
               const sceneToken = canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
               
-              createData.push({
-                tokenId: sceneToken?.id,
+              // In v13, omit tokenId if undefined - Foundry will handle it
+              const combatantData = {
                 actorId: actor.id,
                 sceneId: canvas.scene.id,
                 hidden: false
-              });
+              };
+              
+              // Only add tokenId if we found a token on the scene
+              if (sceneToken?.id) {
+                combatantData.tokenId = sceneToken.id;
+              }
+              
+              createData.push(combatantData);
             }
             
             try {
@@ -2298,15 +2305,27 @@ function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
     { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET } // Bottom-right corner
   ];
   
+  // Foundry v13: Check walls manually using line segment intersection
   for (const point of testPoints) {
-    // Check if any point collides with a movement-blocking wall
-    const collision = canvas.walls.checkCollision(
-      new Ray({ x: point.x - 1, y: point.y - 1 }, { x: point.x + 1, y: point.y + 1 }),
-      { type: "move", mode: "any" }
-    );
+    // Create a tiny test line to check if point is inside a wall
+    const testOrigin = { x: point.x - 1, y: point.y - 1 };
+    const testDest = { x: point.x + 1, y: point.y + 1 };
     
-    if (collision) {
-      return false; // Wall blocks this position
+    // Check against all walls that block movement
+    for (const wall of canvas.walls.placeables) {
+      // In v13, check the movement property (WALL_MOVEMENT_TYPES)
+      const wallMovement = wall.document.move ?? CONST.WALL_MOVEMENT_TYPES.NORMAL;
+      if (wallMovement === CONST.WALL_MOVEMENT_TYPES.NONE) continue;
+      
+      // Get wall endpoints
+      const wallCoords = wall.document.c;
+      const wallA = { x: wallCoords[0], y: wallCoords[1] };
+      const wallB = { x: wallCoords[2], y: wallCoords[3] };
+      
+      // Check if test line intersects this wall
+      if (foundry.utils.lineSegmentIntersects(testOrigin, testDest, wallA, wallB)) {
+        return false; // Wall blocks this position
+      }
     }
   }
   

@@ -30,6 +30,20 @@
   width: auto;
 }
 
+/* Ensure the window header matches the content width */
+.dialog.window-app:has(.pv-form-party) .window-header {
+  min-width: 550px;
+  max-width: 700px;
+  width: auto;
+}
+
+/* Make the entire window responsive */
+.dialog.window-app:has(.pv-form-party) {
+  min-width: 550px;
+  max-width: 700px;
+  width: auto;
+}
+
 /* Form Party Dialog Styles */
 .pv-form-party {
   background: rgba(0, 0, 0, 0.05);
