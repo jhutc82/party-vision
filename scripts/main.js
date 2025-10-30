@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.16');
+  console.log('Party Vision | Initializing Enhanced Module v2.2.17');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -439,7 +439,7 @@ function setupTokenHUD() {
     else if (controlled.length === 1 && 
              controlled[0]?.document.getFlag('party-vision', 'memberData')) {
       const deployButton = $(`
-        <div class="control-icon party-vision-deploy" title="Deploy Party">
+        <div class="control-icon party-vision-deploy" title="Deploy Party (Right-click to cycle light source)">
           <i class="fas fa-users-slash"></i>
         </div>
       `);
@@ -469,9 +469,74 @@ function setupTokenHUD() {
         }
         app.clear();
       });
+      
+      // RIGHT-CLICK to cycle light sources
+      deployButton.on('contextmenu', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await cycleLightSource(controlled[0]);
+        app.clear();
+      });
+      
       col.append(deployButton);
     }
   });
+}
+
+// ==============================================
+// LIGHT SOURCE CYCLING
+// ==============================================
+
+/**
+ * Cycle through available light sources on a party token
+ * @param {Token} partyToken - The party token to cycle lights on
+ */
+async function cycleLightSource(partyToken) {
+  const availableLights = partyToken.document.getFlag('party-vision', 'availableLights') || [];
+  const currentIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') || 0;
+  
+  if (availableLights.length === 0) {
+    console.log('Party Vision | No available lights to cycle');
+    return;
+  }
+  
+  // Calculate next index (cycle through lights + "no light" option)
+  // availableLights has N entries, plus 1 for "no light" = N+1 total options
+  const totalOptions = availableLights.length + 1; // +1 for "no light" option
+  const nextIndex = (currentIndex + 1) % totalOptions;
+  
+  // Update the active light index
+  await partyToken.document.setFlag('party-vision', 'activeLightIndex', nextIndex);
+  
+  // Apply the light
+  if (nextIndex < availableLights.length) {
+    // Apply a specific character's light
+    const lightSource = availableLights[nextIndex];
+    await partyToken.document.update({ light: lightSource.light });
+    console.log(`Party Vision | Now using ${lightSource.actorName}'s light`);
+  } else {
+    // "No light" option - turn off all lighting
+    await partyToken.document.update({ 
+      light: {
+        bright: 0,
+        dim: 0,
+        angle: 360,
+        color: null,
+        alpha: 0.5,
+        animation: {},
+        coloration: 1,
+        luminosity: 0.5,
+        attenuation: 0.5,
+        contrast: 0,
+        saturation: 0,
+        shadows: 0
+      }
+    });
+    console.log('Party Vision | Party lighting turned off');
+  }
+  
+  // Refresh the token
+  partyToken.refresh();
 }
 
 // ==============================================
@@ -1538,15 +1603,82 @@ async function updatePartyLightingFromActors(partyToken) {
     lights.forEach(l => console.log(`Party Vision |   - ${l.actorName}: bright=${l.bright}, dim=${l.dim}`));
   }
   
-  // Aggregate lighting
-  const aggregatedLight = aggregateLights(lights);
+  // Store available lights for cycling
+  const availableLights = lights.map(light => ({
+    actorId: memberData.find(m => game.actors.get(m.actorId)?.name === light.actorName)?.actorId,
+    actorName: light.actorName,
+    light: { ...light }
+  })).filter(l => l.actorId); // Remove any that couldn't be mapped
+  
+  await partyToken.document.setFlag('party-vision', 'availableLights', availableLights);
+  
+  // Check if we're in manual light selection mode
+  const activeLightIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') ?? -1;
+  
+  let lightToApply;
+  
+  if (activeLightIndex >= 0) {
+    // Manual selection mode is active
+    if (activeLightIndex < availableLights.length) {
+      // User has selected a specific light source
+      const selectedLight = availableLights[activeLightIndex];
+      
+      // Check if the selected light still exists and has light
+      if (selectedLight && (selectedLight.light.bright > 0 || selectedLight.light.dim > 0)) {
+        // Selected light is still valid, use it
+        lightToApply = selectedLight.light;
+        console.log(`Party Vision | Using manually selected light: ${selectedLight.actorName}`);
+      } else {
+        // Selected light has gone to 0 or disappeared - auto-switch to next
+        console.log(`Party Vision | Active light source (${selectedLight?.actorName}) extinguished, auto-switching...`);
+        
+        // Find next available light
+        let newIndex = activeLightIndex;
+        let foundLight = false;
+        
+        for (let i = 0; i < availableLights.length; i++) {
+          newIndex = (activeLightIndex + 1 + i) % availableLights.length;
+          const candidate = availableLights[newIndex];
+          if (candidate.light.bright > 0 || candidate.light.dim > 0) {
+            lightToApply = candidate.light;
+            await partyToken.document.setFlag('party-vision', 'activeLightIndex', newIndex);
+            console.log(`Party Vision | Auto-switched to ${candidate.actorName}'s light`);
+            foundLight = true;
+            break;
+          }
+        }
+        
+        // If no valid lights found, turn off lighting
+        if (!foundLight) {
+          lightToApply = {
+            bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
+            animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
+            contrast: 0, saturation: 0, shadows: 0
+          };
+          await partyToken.document.setFlag('party-vision', 'activeLightIndex', availableLights.length); // Point to "no light"
+          console.log(`Party Vision | All lights extinguished, party token is now dark`);
+        }
+      }
+    } else {
+      // activeLightIndex is pointing to "no light" (beyond array)
+      lightToApply = {
+        bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
+        animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
+        contrast: 0, saturation: 0, shadows: 0
+      };
+      console.log(`Party Vision | Manual selection: No light (user preference)`);
+    }
+  } else {
+    // Auto mode (default) - use brightest
+    lightToApply = aggregateLights(lights);
+  }
   
   // Update party token lighting with error handling
   try {
-    await partyToken.document.update({ light: aggregatedLight });
+    await partyToken.document.update({ light: lightToApply });
     
-    if (aggregatedLight.bright > 0 || aggregatedLight.dim > 0) {
-      console.log(`Party Vision | ✅ Party token lighting updated: bright=${aggregatedLight.bright}, dim=${aggregatedLight.dim}`);
+    if (lightToApply.bright > 0 || lightToApply.dim > 0) {
+      console.log(`Party Vision | ✅ Party token lighting updated: bright=${lightToApply.bright}, dim=${lightToApply.dim}`);
     } else {
       console.log(`Party Vision | ✅ Party token lighting cleared (no light sources)`);
     }
@@ -1660,6 +1792,135 @@ function aggregateLights(lights) {
   // Use brightest light's configuration
   // Could be enhanced to blend colors, etc., but this is a good start
   return brightestLight;
+}
+
+// ==============================================
+// LIGHT SOURCE CYCLING
+// ==============================================
+
+/**
+ * Cycle to the next available light source on the party token
+ * Order: Member 1 → Member 2 → ... → No Light → Member 1
+ * @param {Token} partyToken - The party token
+ */
+async function cycleLightSource(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) return;
+  
+  // Get or initialize available lights array
+  let availableLights = partyToken.document.getFlag('party-vision', 'availableLights') || [];
+  let activeLightIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') ?? -1;
+  
+  // If availableLights is empty or outdated, rebuild it
+  if (availableLights.length === 0) {
+    availableLights = await collectAvailableLights(partyToken, memberData);
+    await partyToken.document.setFlag('party-vision', 'availableLights', availableLights);
+  }
+  
+  // Cycle to next index
+  activeLightIndex = (activeLightIndex + 1) % (availableLights.length + 1); // +1 for "no light" option
+  
+  // Update the active index
+  await partyToken.document.setFlag('party-vision', 'activeLightIndex', activeLightIndex);
+  
+  // Apply the selected light
+  if (activeLightIndex < availableLights.length) {
+    // Apply a member's light
+    const selectedLight = availableLights[activeLightIndex];
+    await partyToken.document.update({ light: selectedLight.light });
+    console.log(`Party Vision | Now using ${selectedLight.actorName}'s light (bright=${selectedLight.light.bright}, dim=${selectedLight.light.dim})`);
+  } else {
+    // "No light" option
+    const noLight = {
+      bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
+      animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
+      contrast: 0, saturation: 0, shadows: 0
+    };
+    await partyToken.document.update({ light: noLight });
+    console.log(`Party Vision | Party lighting turned off`);
+  }
+}
+
+/**
+ * Collect all available light sources from party members
+ * @param {Token} partyToken - The party token
+ * @param {Array} memberData - Array of member data
+ * @returns {Array} Array of available lights with actorId, actorName, and light properties
+ */
+async function collectAvailableLights(partyToken, memberData) {
+  const lights = [];
+  
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+    
+    let effectiveLight = null;
+    
+    // Check if member has originalLight stored (direct token lighting)
+    if (member.originalLight && (member.originalLight.bright > 0 || member.originalLight.dim > 0)) {
+      effectiveLight = member.originalLight;
+    }
+    
+    // Strategy 1: Check deployed tokens
+    if (!effectiveLight) {
+      const deployedTokens = canvas.tokens.placeables.filter(t => 
+        t.actor?.id === actor.id && 
+        t.id !== partyToken.id &&
+        !t.document.getFlag('party-vision', 'memberData')
+      );
+      
+      if (deployedTokens.length > 0) {
+        const token = deployedTokens[0];
+        if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
+          effectiveLight = token.document.light;
+        }
+      }
+    }
+    
+    // Strategy 2: Check computed token data
+    if (!effectiveLight) {
+      try {
+        let tokenDoc = null;
+        if (typeof actor.getTokenDocument === 'function') {
+          tokenDoc = await actor.getTokenDocument();
+        } else if (typeof actor.getTokenData === 'function') {
+          tokenDoc = actor.getTokenData();
+        } else if (actor.prototypeToken) {
+          tokenDoc = actor.prototypeToken;
+        }
+        
+        if (tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0)) {
+          effectiveLight = tokenDoc.light;
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+    
+    // Add to lights array if found
+    if (effectiveLight) {
+      lights.push({
+        actorId: actor.id,
+        actorName: actor.name,
+        light: {
+          bright: effectiveLight.bright || 0,
+          dim: effectiveLight.dim || 0,
+          angle: effectiveLight.angle || 360,
+          color: effectiveLight.color || null,
+          alpha: effectiveLight.alpha || 0.5,
+          animation: effectiveLight.animation || {},
+          coloration: effectiveLight.coloration || 1,
+          luminosity: effectiveLight.luminosity || 0.5,
+          attenuation: effectiveLight.attenuation || 0.5,
+          contrast: effectiveLight.contrast || 0,
+          saturation: effectiveLight.saturation || 0,
+          shadows: effectiveLight.shadows || 0
+        }
+      });
+    }
+  }
+  
+  return lights;
 }
 
 // ==============================================
@@ -1896,6 +2157,7 @@ window.PartyVision = {
   deployParty,
   updatePartyLighting,
   updatePartyLightingFromActors,
+  cycleLightSource,
   FORMATION_PRESETS,
   
   /**

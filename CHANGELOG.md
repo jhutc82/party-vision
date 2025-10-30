@@ -5,6 +5,61 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.17] - 2025-10-29
+
+### Added
+- **Light Source Cycling**: Right-click the Deploy Party button to cycle through available light sources
+  - Cycle order: Member 1 → Member 2 → ... → No Light → Member 1
+  - Each light source shows with full fidelity (color, animation, angle, etc.)
+  - Console logs which light is active (minimal visual feedback)
+  - "No Light" option allows manually turning off party lighting
+  
+### Changed
+- **Auto-Switch Behavior**: When active light goes to 0 (torch extinguished, spell ends), automatically switches to next available light
+  - Console log: "Active light source (Character Name) extinguished, auto-switching..."
+  - If no lights remain, party token becomes dark
+- **Light Management**: Party token now stores `availableLights` array and `activeLightIndex` in flags
+  - `activeLightIndex = -1` means auto mode (brightest light, default behavior)
+  - `activeLightIndex >= 0` means manual selection mode (user chose specific light)
+  
+### Enhanced
+- **Smart Lighting Updates**: When torches/spells change, the system maintains manual selection when possible
+  - If selected light still exists and has light → keep using it
+  - If selected light goes to 0 → auto-switch to next available
+  - Auto mode (default) continues to use brightest light as before
+
+### Technical Details
+- Added `cycleLightSource(partyToken)` function for cycling through available lights
+- Added `collectAvailableLights(partyToken, memberData)` helper function
+- Enhanced `updatePartyLightingFromActors()` to respect manual light selection
+- Right-click handler on Deploy button prevents default context menu
+- All light properties stored: bright, dim, color, angle, alpha, animation, coloration, luminosity, attenuation, contrast, saturation, shadows
+
+### User Experience
+**Default Behavior (Unchanged):**
+- Form party → brightest light automatically selected
+- Torch equipped/unequipped → lighting updates automatically
+
+**New Cycling Feature:**
+1. Form party (uses brightest light by default)
+2. Right-click Deploy button → switches to next member's light
+3. Right-click again → cycles to next member
+4. Right-click when on last member → switches to "No Light"
+5. Right-click on "No Light" → back to first member
+
+**Auto-Switch Example:**
+1. Party using Valeros's torch (40 bright)
+2. Valeros drops torch → light goes to 0
+3. System automatically switches to Merisiel's light (20 bright/40 dim)
+4. Console: "Active light source (Valeros) extinguished, auto-switching..."
+5. Console: "Auto-switched to Merisiel's light"
+
+### Backward Compatibility
+- Existing party tokens work without changes
+- If `availableLights` not stored, system collects them on first right-click
+- If `activeLightIndex` not set, defaults to -1 (auto mode)
+- Default behavior unchanged: brightest light automatically selected
+
 ## [2.2.16] - 2025-10-29
 
 ### Fixed
