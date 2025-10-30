@@ -5,6 +5,28 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.4] - 2025-10-30
+
+### Changed
+- **Formation Naming**: Renamed "Standard" formation to "Custom" formation
+  - More accurately reflects that this formation preserves your custom token positioning
+  - Updated in formation presets, Form Party macro, and settings hints
+  - Affects formation dropdown in Form Party dialog
+
+### Improved
+- **Auto-Deploy on Combat**: Now shows direction selection dialog instead of silent deployment
+  - When combat starts with Auto-Deploy enabled, a dialog appears to choose facing direction
+  - Select North, South, East, or West before deploying party members
+  - Provides better control over tactical positioning at combat start
+  - North is pre-selected as default direction
+  - Dialog matches the manual Deploy Party interface
+
+### Technical Details
+- Added `showDeployDialog()` helper function to display direction selection
+- Updated `updateCombat` hook to call `showDeployDialog()` instead of direct deployment
+- Formation preset key changed from `standard` to `custom` throughout codebase
+- Direction selection uses same radians conversion as manual deploy
+
 ## [2.3.3] - 2025-10-30
 
 ### Added

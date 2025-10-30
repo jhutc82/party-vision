@@ -3,9 +3,9 @@
 // ==============================================
 
 export const FORMATION_PRESETS = {
-  standard: {
-    name: "Standard",
-    description: "Default formation as positioned",
+  custom: {
+    name: "Custom",
+    description: "Custom formation as positioned",
     transform: (dx, dy) => ({ dx, dy })
   },
   

@@ -150,6 +150,15 @@ Hooks.once('init', () => {
     default: ''
   });
 
+  game.settings.register('party-vision', 'savedCustomFormation', {
+    name: "Saved Custom Formation",
+    hint: "Stores the positions of your last custom formation so you can restore it later.",
+    scope: 'world',
+    config: false,
+    type: Object,
+    default: null
+  });
+
   game.settings.register('party-vision', 'calculateMovement', {
     name: "Calculate Movement Capabilities",
     hint: "Automatically calculate party movement speed and types based on members. Disable if this causes issues with your game system.",
@@ -257,124 +266,13 @@ Hooks.once('init', () => {
     return result;
   }, 'WRAPPER');
   
-  // --- REGISTER TOKEN HUD LOCOMOTION FILTER FOR PARTY TOKENS ---
-  // Filters movement types shown in Token HUD to only those common to all party members
-  libWrapper.register('party-vision', 'TokenHUD.prototype._getLocomotionTypes', function(wrapped, ...args) {
-    const token = this.object;
-    
-    // Check if this is a party token
-    const memberData = token?.document?.getFlag('party-vision', 'memberData');
-    const movementData = token?.document?.getFlag('party-vision', 'movement');
-    
-    // If not a party token or no movement data, use default behavior
-    if (!memberData || !movementData || !movementData.types) {
-      return wrapped(...args);
-    }
-    
-    // Get the common movement types from party data
-    const commonTypes = movementData.types || [];
-    
-    // Call the original method to get all available types
-    const allTypes = wrapped(...args);
-    
-    // If no common types, return an empty array (party can't move)
-    if (commonTypes.length === 0) {
-      console.log('Party Vision | No common movement types - party cannot move');
-      return [];
-    }
-    
-    // Filter to only show types that ALL party members have
-    // Map common types to Foundry's locomotion format
-    const filteredTypes = allTypes.filter(type => {
-      // Match against common type names (case insensitive)
-      const typeName = type.id || type.name || type;
-      return commonTypes.some(commonType => 
-        typeName.toLowerCase() === commonType.toLowerCase() ||
-        typeName.toLowerCase().includes(commonType.toLowerCase())
-      );
-    });
-    
-    console.log('Party Vision | Filtered locomotion types:', filteredTypes);
-    return filteredTypes;
-  }, 'WRAPPER');
-  
-  // --- REGISTER COMBAT TOGGLE HANDLER FOR PARTY TOKENS ---
-  // When combat toggle is clicked on a party token, add all members to combat
-  libWrapper.register('party-vision', 'Token.prototype._onToggleCombat', async function(wrapped, event, ...args) {
-    const memberData = this.document.getFlag('party-vision', 'memberData');
-    
-    // If not a party token, use default behavior
-    if (!memberData || memberData.length === 0) {
-      return wrapped(event, ...args);
-    }
-    
-    // Prevent default behavior
-    event?.preventDefault();
-    event?.stopPropagation();
-    
-    // Check if we're in combat
-    if (!game.combat) {
-      ui.notifications.warn("No active combat encounter");
-      return;
-    }
-    
-    // Get all member actors
-    const memberActors = [];
-    for (const member of memberData) {
-      const actor = game.actors.get(member.actorId);
-      if (actor) {
-        memberActors.push(actor);
-      }
-    }
-    
-    if (memberActors.length === 0) {
-      ui.notifications.warn("No valid party members found");
-      return;
-    }
-    
-    // Check if any members are already in combat
-    const combatants = game.combat.combatants.filter(c => 
-      memberActors.some(actor => actor.id === c.actorId)
-    );
-    
-    if (combatants.length > 0) {
-      ui.notifications.info(`Party members already in combat (${combatants.length}/${memberActors.length})`);
-      return;
-    }
-    
-    // Add all party members to combat
-    const createData = [];
-    for (const actor of memberActors) {
-      // Find the actor's token on the scene (if deployed) or use prototype
-      const sceneToken = canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
-      
-      createData.push({
-        tokenId: sceneToken?.id,
-        actorId: actor.id,
-        sceneId: canvas.scene.id,
-        hidden: false
-      });
-    }
-    
-    try {
-      const created = await game.combat.createEmbeddedDocuments("Combatant", createData);
-      ui.notifications.info(`Added ${created.length} party member(s) to combat`);
-      console.log(`Party Vision | Added ${created.length} combatants to combat`);
-    } catch (error) {
-      console.error('Party Vision | Error adding party to combat:', error);
-      ui.notifications.error("Failed to add party members to combat");
-    }
-    
-    return;
-  }, 'MIXED');
-  
   // NOTE: Token.prototype._onDoubleLeft was removed in Foundry v13
   // Double-click functionality removed for now - players can still right-click → Open Actor Sheet
   
   console.log('Party Vision | Init hook completed successfully');
   console.log('Party Vision | Settings registered: 6');
   console.log('Party Vision | Keybindings registered: 1');
-  console.log('Party Vision | libWrapper hooks registered: 3'); // Updated count: vision + locomotion + combat
+  console.log('Party Vision | libWrapper hooks registered: 1');
 });
 
 // ==============================================
@@ -600,6 +498,118 @@ function setupTokenHUD() {
       
       col.append(deployButton);
     }
+    
+    // === MOVEMENT TYPE FILTERING FOR PARTY TOKENS ===
+    // Filter movement selector options to only show common movement types
+    const token = controlled[0];
+    if (token && controlled.length === 1) {
+      const memberData = token.document.getFlag('party-vision', 'memberData');
+      const movementData = token.document.getFlag('party-vision', 'movement');
+      
+      if (memberData && movementData && movementData.types) {
+        // Find the movement selector in the HUD
+        setTimeout(() => {
+          const $movementSelect = $html.find('select[name="movement"]');
+          if ($movementSelect.length > 0) {
+            const commonTypes = movementData.types || [];
+            console.log('Party Vision | Filtering movement types to:', commonTypes);
+            
+            // Get all options
+            const $options = $movementSelect.find('option');
+            $options.each(function() {
+              const $option = $(this);
+              const optionValue = $option.val().toLowerCase();
+              const optionText = $option.text().toLowerCase();
+              
+              // Check if this movement type is in common types
+              const isCommon = commonTypes.some(commonType => 
+                optionValue.includes(commonType.toLowerCase()) ||
+                optionText.includes(commonType.toLowerCase())
+              );
+              
+              // Hide options that aren't common to all party members
+              if (!isCommon && optionValue !== '') {
+                $option.hide();
+              }
+            });
+          }
+        }, 100); // Small delay to ensure HUD is fully rendered
+      }
+    }
+    
+    // === COMBAT TOGGLE FOR PARTY TOKENS ===
+    // Add functionality to combat toggle button for party tokens
+    if (token && controlled.length === 1) {
+      const memberData = token.document.getFlag('party-vision', 'memberData');
+      
+      if (memberData && memberData.length > 0) {
+        // Find the combat toggle button
+        const $combatToggle = $html.find('[data-action="combat"]');
+        if ($combatToggle.length > 0) {
+          // Remove existing handlers and add our custom one
+          $combatToggle.off('click').on('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            
+            // Check if we're in combat
+            if (!game.combat) {
+              ui.notifications.warn("No active combat encounter");
+              return;
+            }
+            
+            // Get all member actors
+            const memberActors = [];
+            for (const member of memberData) {
+              const actor = game.actors.get(member.actorId);
+              if (actor) {
+                memberActors.push(actor);
+              }
+            }
+            
+            if (memberActors.length === 0) {
+              ui.notifications.warn("No valid party members found");
+              return;
+            }
+            
+            // Check if any members are already in combat
+            const combatants = game.combat.combatants.filter(c => 
+              memberActors.some(actor => actor.id === c.actorId)
+            );
+            
+            if (combatants.length > 0) {
+              ui.notifications.info(`Party members already in combat (${combatants.length}/${memberActors.length})`);
+              return;
+            }
+            
+            // Add all party members to combat
+            const createData = [];
+            for (const actor of memberActors) {
+              // Find the actor's token on the scene (if deployed)
+              const sceneToken = canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
+              
+              createData.push({
+                tokenId: sceneToken?.id,
+                actorId: actor.id,
+                sceneId: canvas.scene.id,
+                hidden: false
+              });
+            }
+            
+            try {
+              const created = await game.combat.createEmbeddedDocuments("Combatant", createData);
+              ui.notifications.info(`Added ${created.length} party member(s) to combat`);
+              console.log(`Party Vision | Added ${created.length} combatants to combat`);
+            } catch (error) {
+              console.error('Party Vision | Error adding party to combat:', error);
+              ui.notifications.error("Failed to add party members to combat - " + error.message);
+            }
+            
+            // Close the HUD
+            app.clear();
+          });
+        }
+      }
+    }
   });
 }
 
@@ -780,7 +790,7 @@ Hooks.on('updateCombat', async (combat, updateData, options, userId) => {
   const isEnding = combat.round > 0 && updateData.active === false;
   
   if (isStarting && game.settings.get('party-vision', 'autoDeployOnCombat')) {
-    console.log('Party Vision | Combat starting - auto-deploying party tokens');
+    console.log('Party Vision | Combat starting - showing deploy dialog for party tokens');
     
     // Find party tokens on the current scene
     const partyTokens = canvas.tokens.placeables.filter(t => 
@@ -789,11 +799,11 @@ Hooks.on('updateCombat', async (combat, updateData, options, userId) => {
     
     if (partyTokens.length === 0) return;
     
-    ui.notifications.info(`Auto-deploying ${partyTokens.length} party token(s) for combat...`);
+    ui.notifications.info(`Deploy ${partyTokens.length} party token(s) for combat...`);
     
+    // Show deploy dialog for each party token
     for (const partyToken of partyTokens) {
-      const lastFacing = partyToken.document.getFlag('party-vision', 'lastFacing') || (-Math.PI / 2);
-      await deployParty(partyToken, lastFacing, true); // Pass true for combat mode
+      await showDeployDialog(partyToken);
     }
   }
   
@@ -1990,6 +2000,116 @@ async function collectAvailableLights(partyToken, memberData) {
 // ==============================================
 // HELPER: DEPLOY PARTY FUNCTION
 // ==============================================
+
+/**
+ * Shows the deploy party dialog to select direction
+ * @param {Token} partyToken - The party token to deploy
+ * @returns {Promise<void>}
+ */
+async function showDeployDialog(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) {
+    ui.notifications.warn("This is not a valid Party Token.");
+    return;
+  }
+
+  // Find the leader
+  const leaderData = memberData.find(m => m.isLeader) || memberData[0];
+
+  // Show deployment dialog with direction options
+  new Dialog({
+    title: `Deploy Party (Leader: ${leaderData.name})`,
+    content: `
+      <div style="padding: 10px;">
+        <h3 style="margin-top: 0;">Leader: ${leaderData.name}</h3>
+        <p>Choose deployment direction:</p>
+        <p style="font-size: 0.9em; color: #999; margin: 10px 0;">
+          The formation will maintain its shape, oriented in the chosen direction.
+        </p>
+        <div class="direction-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 15px auto; max-width: 200px;">
+          <div class="direction-btn empty" style="visibility: hidden;"></div>
+          <div class="direction-btn" data-direction="north" title="North" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
+            <i class="fas fa-arrow-up" style="font-size: 24px;"></i>
+          </div>
+          <div class="direction-btn empty" style="visibility: hidden;"></div>
+          <div class="direction-btn" data-direction="west" title="West" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
+            <i class="fas fa-arrow-left" style="font-size: 24px;"></i>
+          </div>
+          <div class="direction-btn empty" style="visibility: hidden;"></div>
+          <div class="direction-btn" data-direction="east" title="East" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
+            <i class="fas fa-arrow-right" style="font-size: 24px;"></i>
+          </div>
+          <div class="direction-btn empty" style="visibility: hidden;"></div>
+          <div class="direction-btn" data-direction="south" title="South" style="padding: 15px; border: 2px solid #444; border-radius: 5px; cursor: pointer; text-align: center; background: rgba(0,0,0,0.3);">
+            <i class="fas fa-arrow-down" style="font-size: 24px;"></i>
+          </div>
+          <div class="direction-btn empty" style="visibility: hidden;"></div>
+        </div>
+      </div>
+    `,
+    buttons: {
+      deploy: {
+        label: "Deploy",
+        callback: async (html) => {
+          const selectedDirection = html.find('.direction-btn.selected').data('direction') || 'north';
+          
+          // Convert direction string to radians
+          const directionRadians = {
+            'north': -Math.PI / 2,
+            'east': 0,
+            'south': Math.PI / 2,
+            'west': Math.PI
+          };
+          
+          const radians = directionRadians[selectedDirection];
+          await deployParty(partyToken, radians, true);
+        }
+      },
+      cancel: { label: "Cancel" }
+    },
+    default: "deploy",
+    render: (html) => {
+      html.find('.direction-btn:not(.empty)').on('click', function() {
+        html.find('.direction-btn').removeClass('selected');
+        $(this).addClass('selected');
+        $(this).css({
+          'border-color': '#00ff88',
+          'background': 'rgba(0, 255, 136, 0.2)'
+        });
+      });
+      
+      // Select north by default
+      const defaultBtn = html.find('.direction-btn[data-direction="north"]');
+      defaultBtn.addClass('selected');
+      defaultBtn.css({
+        'border-color': '#00ff88',
+        'background': 'rgba(0, 255, 136, 0.2)'
+      });
+      
+      // Add hover effects
+      html.find('.direction-btn:not(.empty)').hover(
+        function() {
+          if (!$(this).hasClass('selected')) {
+            $(this).css({
+              'border-color': '#0088ff',
+              'background': 'rgba(0, 136, 255, 0.2)',
+              'transform': 'scale(1.05)'
+            });
+          }
+        },
+        function() {
+          if (!$(this).hasClass('selected')) {
+            $(this).css({
+              'border-color': '#444',
+              'background': 'rgba(0, 0, 0, 0.3)',
+              'transform': 'scale(1)'
+            });
+          }
+        }
+      );
+    }
+  }).render(true);
+}
 
 /**
  * Deploys the party token, spawning individual member tokens
