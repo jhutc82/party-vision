@@ -5,6 +5,46 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2025-10-30
+
+### Added
+- **Image Preview**: Party Token Image now shows live preview of selected icon
+  - 64x64 preview thumbnail displays current image
+  - Updates automatically when typing path or using Browse button
+  - Shows "No preview" placeholder if path is empty
+  - Shows "Invalid image" if image fails to load
+  - Preview positioned next to input field for easy reference
+
+### Improved
+- **Dropdown Height**: Increased dropdown minimum height to prevent text truncation
+  - Changed from 36px to 42px minimum height
+  - Added proper line-height (1.5) for better text display
+  - Increased padding to 10px 12px for more comfortable appearance
+  - Dropdown options now have consistent padding and line-height
+  - Text like "Valeros (Previous Leader)" now displays completely
+  
+- **Input Field Consistency**: All inputs now share consistent sizing
+  - 42px minimum height across text inputs, selects, and buttons
+  - Better vertical alignment in layouts
+  - More professional, polished appearance
+
+- **Browse Button Sizing**: Button now matches input field height exactly
+  - Increased padding from 8px 16px to 10px 20px
+  - Better visual balance with taller inputs
+
+### Fixed
+- **Dropdown Text Cutoff**: Long option text (like "Valeros (Previous Leader)") no longer truncates
+- **Image Input Field**: Now properly sized to match other inputs
+- **Vertical Alignment**: All form controls properly aligned regardless of content length
+
+### Technical Details
+- Added `.pv-image-picker-section` class for image preview layout
+- Added `.pv-image-preview-container` for horizontal preview layout
+- Added `.pv-image-preview` for 64x64 thumbnail container
+- Updated render callback to handle image preview updates
+- Preview uses error handling to show fallback on invalid paths
+- CSS line-height and padding adjustments for better text rendering
+
 ## [2.3.1] - 2025-10-30
 
 ### Fixed

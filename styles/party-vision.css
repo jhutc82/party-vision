@@ -46,13 +46,14 @@
 .pv-form-party .form-group input[type="text"],
 .pv-form-party .form-group select {
   width: 100%;
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 14px;
+  line-height: 1.5;
   border: 1px solid #999;
   background: #ffffff;
   color: #000000;
   border-radius: 3px;
-  min-height: 36px;
+  min-height: 42px;
   box-sizing: border-box;
 }
 
@@ -61,9 +62,16 @@
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 10px center;
+  background-position: right 12px center;
   background-size: 12px;
-  padding-right: 32px;
+  padding-right: 36px;
+  height: auto;
+}
+
+/* Ensure dropdown options have proper height */
+.pv-form-party .form-group select option {
+  padding: 8px;
+  line-height: 1.5;
 }
 
 .pv-form-party .form-group input[type="text"]:focus,
@@ -71,6 +79,52 @@
   outline: none;
   border-color: #0088ff;
   box-shadow: 0 0 5px rgba(0, 136, 255, 0.3);
+}
+
+/* Image picker section */
+.pv-image-picker-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pv-image-preview-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pv-image-preview {
+  width: 64px;
+  height: 64px;
+  border: 2px solid #999;
+  border-radius: 4px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.pv-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pv-image-preview-placeholder {
+  color: #999;
+  font-size: 12px;
+  text-align: center;
+  padding: 5px;
+}
+
+.pv-input-row {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
 }
 
 .pv-form-party .input-row {
@@ -85,7 +139,7 @@
 
 .pv-form-party .input-row button {
   flex-shrink: 0;
-  padding: 8px 16px;
+  padding: 10px 20px;
   background: #0088ff;
   border: 1px solid #0066cc;
   color: #ffffff;
@@ -94,10 +148,11 @@
   transition: all 0.2s ease;
   font-weight: 600;
   white-space: nowrap;
-  min-height: 36px;
+  min-height: 42px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 6px;
 }
 
 .pv-form-party .input-row button:hover {
