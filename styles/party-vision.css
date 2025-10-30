@@ -23,194 +23,6 @@
   min-width: 500px;
 }
 
-/* Enhanced Deploy Dialog Styles */
-.pv-deploy-dialog {
-  background: linear-gradient(135deg, rgba(10, 10, 30, 0.95), rgba(20, 20, 40, 0.95));
-  padding: 20px;
-  border-radius: 8px;
-  color: #e0e0e0;
-}
-
-.pv-section {
-  margin-bottom: 20px;
-}
-
-.pv-section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid rgba(0, 136, 255, 0.3);
-}
-
-.pv-section-header i {
-  color: #0088ff;
-  font-size: 18px;
-}
-
-.pv-help-text {
-  font-size: 13px;
-  color: #a0a0a0;
-  line-height: 1.4;
-  font-style: italic;
-}
-
-.pv-divider {
-  height: 1px;
-  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.2), transparent);
-  margin: 20px 0;
-}
-
-/* Member List Styles */
-.pv-member-list {
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
-  padding: 8px;
-}
-
-.pv-member-row {
-  transition: all 0.2s ease;
-}
-
-.pv-member-row:hover {
-  background: rgba(0, 136, 255, 0.15) !important;
-  transform: translateX(3px);
-}
-
-.pv-member-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #0088ff;
-}
-
-/* Selection Controls */
-.pv-selection-controls {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-start;
-}
-
-.pv-btn-secondary {
-  padding: 8px 16px;
-  background: rgba(0, 136, 255, 0.2);
-  border: 1px solid rgba(0, 136, 255, 0.4);
-  color: #ffffff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.pv-btn-secondary:hover {
-  background: rgba(0, 136, 255, 0.4);
-  border-color: rgba(0, 136, 255, 0.6);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 136, 255, 0.3);
-}
-
-.pv-btn-secondary:active {
-  transform: translateY(0);
-}
-
-/* Direction Grid */
-.pv-direction-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin: 15px auto;
-  max-width: 220px;
-}
-
-.pv-direction-btn {
-  padding: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  cursor: pointer;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pv-direction-btn:not(.empty):hover {
-  border-color: #0088ff;
-  background: rgba(0, 136, 255, 0.2);
-  transform: scale(1.08);
-  box-shadow: 0 4px 12px rgba(0, 136, 255, 0.4);
-}
-
-.pv-direction-btn.empty {
-  visibility: hidden;
-}
-
-.pv-direction-btn.selected {
-  border-color: #00ff88;
-  background: rgba(0, 255, 136, 0.25);
-  box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
-}
-
-.pv-direction-btn i {
-  font-size: 28px;
-  color: #ffffff;
-}
-
-/* Form Group */
-.pv-form-group {
-  margin-bottom: 16px;
-}
-
-.pv-form-group label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: #ffffff;
-}
-
-.pv-select {
-  width: 100%;
-  padding: 10px 12px;
-  font-size: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.4);
-  color: #ffffff;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.pv-select:focus {
-  outline: none;
-  border-color: #0088ff;
-  box-shadow: 0 0 8px rgba(0, 136, 255, 0.4);
-}
-
-.pv-select:hover {
-  border-color: rgba(0, 136, 255, 0.5);
-}
-
-/* Dialog Button Enhancements */
-.dialog .dialog-button {
-  transition: all 0.2s ease;
-}
-
-.dialog .dialog-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
 /* Form Party Dialog - Wider and responsive */
 .dialog.window-app[data-appid] .window-content:has(.pv-form-party) {
   min-width: 550px;
@@ -482,3 +294,61 @@
   font-size: 0.9em;
   margin-top: 5px;
 }
+
+/* Split Party Dialog Styles */
+.party-vision-split-dialog {
+  min-width: 450px;
+}
+
+.party-vision-split-dialog .window-content {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.party-vision-split-dialog .member-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.party-vision-split-dialog .member-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.party-vision-split-dialog .member-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.party-vision-split-dialog .member-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Button icons spacing */
+.dialog button i {
+  margin-right: 6px;
+}
+
+/* Improved deploy dialog styling */
+.party-vision-dialog .window-content {
+  padding: 10px;
+}
+
+.party-vision-dialog button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.party-vision-dialog button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.party-vision-dialog button:active {
+  transform: translateY(0);
+}
+
