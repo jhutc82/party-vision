@@ -24,6 +24,12 @@
 }
 
 /* Form Party Dialog Styles */
+.pv-form-party {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 10px;
+  border-radius: 5px;
+}
+
 .pv-form-party .form-group {
   margin-bottom: 20px;
 }
@@ -32,19 +38,32 @@
   display: block;
   font-weight: bold;
   margin-bottom: 8px;
-  font-size: 14px;
-  color: #f0f0f0;
+  font-size: 15px;
+  color: #000000;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
 .pv-form-party .form-group input[type="text"],
 .pv-form-party .form-group select {
   width: 100%;
-  padding: 8px;
+  padding: 8px 10px;
   font-size: 14px;
-  border: 1px solid #444;
-  background: rgba(0, 0, 0, 0.3);
-  color: #f0f0f0;
+  border: 1px solid #999;
+  background: #ffffff;
+  color: #000000;
   border-radius: 3px;
+  min-height: 36px;
+  box-sizing: border-box;
+}
+
+.pv-form-party .form-group select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  padding-right: 32px;
 }
 
 .pv-form-party .form-group input[type="text"]:focus,
@@ -57,7 +76,7 @@
 .pv-form-party .input-row {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .pv-form-party .input-row input {
@@ -66,32 +85,43 @@
 
 .pv-form-party .input-row button {
   flex-shrink: 0;
-  padding: 8px 12px;
-  background: rgba(0, 136, 255, 0.2);
-  border: 1px solid #0088ff;
-  color: #f0f0f0;
+  padding: 8px 16px;
+  background: #0088ff;
+  border: 1px solid #0066cc;
+  color: #ffffff;
   border-radius: 3px;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-weight: 600;
+  white-space: nowrap;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .pv-form-party .input-row button:hover {
-  background: rgba(0, 136, 255, 0.4);
-  box-shadow: 0 0 5px rgba(0, 136, 255, 0.5);
+  background: #0099ff;
+  box-shadow: 0 2px 8px rgba(0, 136, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.pv-form-party .input-row button:active {
+  transform: translateY(0);
 }
 
 .pv-form-party .help-text {
   font-size: 12px;
-  color: #999;
-  margin-top: 5px;
+  color: #666666;
+  margin-top: 6px;
   line-height: 1.4;
   font-style: italic;
 }
 
 .pv-form-party .section-divider {
   height: 1px;
-  background: linear-gradient(to right, transparent, #444, transparent);
-  margin: 20px 0;
+  background: linear-gradient(to right, transparent, #cccccc, transparent);
+  margin: 25px 0;
 }
 
 .party-vision-dialog .formation-preview {

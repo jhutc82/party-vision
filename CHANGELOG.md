@@ -5,6 +5,44 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2025-10-30
+
+### Fixed
+- **Form Party Dialog Contrast**: Fixed poor readability on light backgrounds
+  - Changed text colors from light (#f0f0f0) to dark (#000000) for proper contrast
+  - Updated help text color to medium gray (#666666) for better visibility
+  - Changed input backgrounds from transparent to white with proper borders
+  - Enhanced Browse button styling with solid blue background (#0088ff)
+  - Added subtle form background tint for visual definition
+  - Increased label font size to 15px and made them bold black
+  - Improved select dropdown styling with larger minimum height (36px)
+  - Added custom dropdown arrow for consistent appearance
+
+- **Wall Detection False Positives**: Fixed tokens being displaced when no walls exist
+  - Added check to skip wall detection entirely if scene has no walls
+  - Fixed wall movement type constant (using WALL_MOVEMENT_TYPES instead of WALL_SENSE_TYPES)
+  - Improved wall detection to properly identify movement-blocking walls
+  - Added null-safety checks for wall.document.move property
+  - Enhanced logging to identify specific reasons for token displacement
+  - Better diagnostic messages in console for troubleshooting
+
+### Improved
+- **Select Dropdown Appearance**: Dropdowns now properly display full text without truncation
+  - Increased padding and minimum height for better text visibility
+  - Added custom SVG arrow indicator
+  - Improved spacing and alignment
+
+- **Button Styling**: Enhanced Browse button for better visual feedback
+  - Solid background color instead of transparent
+  - Proper hover states with lift animation
+  - Better active state feedback
+
+### Technical Details
+- CSS contrast ratios now meet accessibility standards for light backgrounds
+- Wall detection uses correct Foundry v13 constants (WALL_MOVEMENT_TYPES)
+- Added defensive checks for undefined wall properties
+- Improved console logging for deployment debugging
+
 ## [2.3.0] - 2025-10-30
 
 ### Added
