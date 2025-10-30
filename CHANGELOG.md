@@ -5,6 +5,57 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-10-30
+
+### Added
+- **New Formation Presets**: Added three new tactical formations that scale with party size
+  - Circle: Defensive circular formation with radius scaling
+  - Staggered: Two-row alternating formation
+  - Box: Square perimeter formation
+  
+- **Dynamic Formation Scaling**: All formations now intelligently adjust spacing based on party size
+  - Small parties (2-3 members): Tighter, more compact formations
+  - Medium parties (4-5 members): Balanced spacing
+  - Large parties (6+ members): Wider spacing to prevent overlap
+  - Column and Line formations use adaptive spacing (1.0x to 1.5x grid units)
+  - Wedge formation scales both horizontal and vertical spacing
+  
+### Improved
+- **Form Party Dialog UI**: Complete redesign for better readability and usability
+  - Cleaner, more spacious layout with proper visual hierarchy
+  - Clear section labels without cramped text
+  - Improved input field styling with better contrast
+  - Professional help text styling for better guidance
+  - Subtle visual dividers between sections
+  - Consistent padding and spacing throughout
+  - Better focus states for inputs and selects
+
+### Fixed
+- Formation spacing issues with parties of varying sizes
+- Overlapping text in Form Party configuration dialog
+- Poor readability of help text in dialog
+
+### Technical Details
+- Updated `formations.js` with size-aware transform functions
+- Added `pv-form-party` CSS class for enhanced dialog styling
+- Formation transforms now receive party size (`total` parameter)
+- Dynamic spacing calculations use party size thresholds
+- Improved CSS with proper form-group, label, and help-text styles
+
+### User Experience
+**Formation Improvements:**
+- 2-person party in Column: Compact 1-grid spacing
+- 6-person party in Column: Comfortable 1.5-grid spacing
+- Circle formation radius automatically adjusts: 2 grids for small parties, up to 4+ for large ones
+- Wedge formation creates proper V-shape regardless of party size
+- Box formation intelligently distributes members around perimeter
+
+**UI Improvements:**
+- Form fields are easier to read and interact with
+- Clear visual separation between party info and formation settings
+- Help text provides guidance without cluttering the interface
+- Professional appearance consistent with Foundry VTT's UI design
+
 ## [2.2.18] - 2025-10-30
 
 ### Added

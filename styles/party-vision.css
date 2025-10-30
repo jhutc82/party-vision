@@ -20,7 +20,78 @@
 
 /* Dialog Styles */
 .party-vision-dialog {
-  min-width: 300px;
+  min-width: 400px;
+}
+
+/* Form Party Dialog Styles */
+.pv-form-party .form-group {
+  margin-bottom: 20px;
+}
+
+.pv-form-party .form-group label {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #f0f0f0;
+}
+
+.pv-form-party .form-group input[type="text"],
+.pv-form-party .form-group select {
+  width: 100%;
+  padding: 8px;
+  font-size: 14px;
+  border: 1px solid #444;
+  background: rgba(0, 0, 0, 0.3);
+  color: #f0f0f0;
+  border-radius: 3px;
+}
+
+.pv-form-party .form-group input[type="text"]:focus,
+.pv-form-party .form-group select:focus {
+  outline: none;
+  border-color: #0088ff;
+  box-shadow: 0 0 5px rgba(0, 136, 255, 0.3);
+}
+
+.pv-form-party .input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pv-form-party .input-row input {
+  flex: 1;
+}
+
+.pv-form-party .input-row button {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: rgba(0, 136, 255, 0.2);
+  border: 1px solid #0088ff;
+  color: #f0f0f0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pv-form-party .input-row button:hover {
+  background: rgba(0, 136, 255, 0.4);
+  box-shadow: 0 0 5px rgba(0, 136, 255, 0.5);
+}
+
+.pv-form-party .help-text {
+  font-size: 12px;
+  color: #999;
+  margin-top: 5px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.pv-form-party .section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, #444, transparent);
+  margin: 20px 0;
 }
 
 .party-vision-dialog .formation-preview {

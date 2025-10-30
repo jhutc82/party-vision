@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.2.17');
+  console.log('Party Vision | Initializing Enhanced Module v2.3.0');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
