@@ -33,7 +33,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.3.2');
+  console.log('Party Vision | Initializing Enhanced Module v2.3.3');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -257,13 +257,124 @@ Hooks.once('init', () => {
     return result;
   }, 'WRAPPER');
   
+  // --- REGISTER TOKEN HUD LOCOMOTION FILTER FOR PARTY TOKENS ---
+  // Filters movement types shown in Token HUD to only those common to all party members
+  libWrapper.register('party-vision', 'TokenHUD.prototype._getLocomotionTypes', function(wrapped, ...args) {
+    const token = this.object;
+    
+    // Check if this is a party token
+    const memberData = token?.document?.getFlag('party-vision', 'memberData');
+    const movementData = token?.document?.getFlag('party-vision', 'movement');
+    
+    // If not a party token or no movement data, use default behavior
+    if (!memberData || !movementData || !movementData.types) {
+      return wrapped(...args);
+    }
+    
+    // Get the common movement types from party data
+    const commonTypes = movementData.types || [];
+    
+    // Call the original method to get all available types
+    const allTypes = wrapped(...args);
+    
+    // If no common types, return an empty array (party can't move)
+    if (commonTypes.length === 0) {
+      console.log('Party Vision | No common movement types - party cannot move');
+      return [];
+    }
+    
+    // Filter to only show types that ALL party members have
+    // Map common types to Foundry's locomotion format
+    const filteredTypes = allTypes.filter(type => {
+      // Match against common type names (case insensitive)
+      const typeName = type.id || type.name || type;
+      return commonTypes.some(commonType => 
+        typeName.toLowerCase() === commonType.toLowerCase() ||
+        typeName.toLowerCase().includes(commonType.toLowerCase())
+      );
+    });
+    
+    console.log('Party Vision | Filtered locomotion types:', filteredTypes);
+    return filteredTypes;
+  }, 'WRAPPER');
+  
+  // --- REGISTER COMBAT TOGGLE HANDLER FOR PARTY TOKENS ---
+  // When combat toggle is clicked on a party token, add all members to combat
+  libWrapper.register('party-vision', 'Token.prototype._onToggleCombat', async function(wrapped, event, ...args) {
+    const memberData = this.document.getFlag('party-vision', 'memberData');
+    
+    // If not a party token, use default behavior
+    if (!memberData || memberData.length === 0) {
+      return wrapped(event, ...args);
+    }
+    
+    // Prevent default behavior
+    event?.preventDefault();
+    event?.stopPropagation();
+    
+    // Check if we're in combat
+    if (!game.combat) {
+      ui.notifications.warn("No active combat encounter");
+      return;
+    }
+    
+    // Get all member actors
+    const memberActors = [];
+    for (const member of memberData) {
+      const actor = game.actors.get(member.actorId);
+      if (actor) {
+        memberActors.push(actor);
+      }
+    }
+    
+    if (memberActors.length === 0) {
+      ui.notifications.warn("No valid party members found");
+      return;
+    }
+    
+    // Check if any members are already in combat
+    const combatants = game.combat.combatants.filter(c => 
+      memberActors.some(actor => actor.id === c.actorId)
+    );
+    
+    if (combatants.length > 0) {
+      ui.notifications.info(`Party members already in combat (${combatants.length}/${memberActors.length})`);
+      return;
+    }
+    
+    // Add all party members to combat
+    const createData = [];
+    for (const actor of memberActors) {
+      // Find the actor's token on the scene (if deployed) or use prototype
+      const sceneToken = canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
+      
+      createData.push({
+        tokenId: sceneToken?.id,
+        actorId: actor.id,
+        sceneId: canvas.scene.id,
+        hidden: false
+      });
+    }
+    
+    try {
+      const created = await game.combat.createEmbeddedDocuments("Combatant", createData);
+      ui.notifications.info(`Added ${created.length} party member(s) to combat`);
+      console.log(`Party Vision | Added ${created.length} combatants to combat`);
+    } catch (error) {
+      console.error('Party Vision | Error adding party to combat:', error);
+      ui.notifications.error("Failed to add party members to combat");
+    }
+    
+    return;
+  }, 'MIXED');
+  
   // NOTE: Token.prototype._onDoubleLeft was removed in Foundry v13
   // Double-click functionality removed for now - players can still right-click → Open Actor Sheet
   
   console.log('Party Vision | Init hook completed successfully');
   console.log('Party Vision | Settings registered: 6');
   console.log('Party Vision | Keybindings registered: 1');
-  console.log('Party Vision | libWrapper hooks registered: 1'); // Updated count
+  console.log('Party Vision | libWrapper hooks registered: 3'); // Updated count: vision + locomotion + combat
 });
 
 // ==============================================

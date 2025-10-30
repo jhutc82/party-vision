@@ -20,7 +20,14 @@
 
 /* Dialog Styles */
 .party-vision-dialog {
-  min-width: 400px;
+  min-width: 500px;
+}
+
+/* Form Party Dialog - Wider and responsive */
+.dialog.window-app[data-appid] .window-content:has(.pv-form-party) {
+  min-width: 550px;
+  max-width: 700px;
+  width: auto;
 }
 
 /* Form Party Dialog Styles */
@@ -66,12 +73,18 @@
   background-size: 12px;
   padding-right: 36px;
   height: auto;
+  min-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Ensure dropdown options have proper height */
+/* Ensure dropdown options have proper height and visibility */
 .pv-form-party .form-group select option {
   padding: 8px;
   line-height: 1.5;
+  white-space: normal;
+  overflow: visible;
 }
 
 .pv-form-party .form-group input[type="text"]:focus,
@@ -125,6 +138,11 @@
   display: flex;
   gap: 8px;
   align-items: stretch;
+}
+
+.pv-input-row input[type="text"] {
+  flex: 1;
+  min-width: 250px;
 }
 
 .pv-form-party .input-row {

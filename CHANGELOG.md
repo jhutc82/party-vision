@@ -5,6 +5,51 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.3] - 2025-10-30
+
+### Added
+- **Token HUD Movement Type Filtering**: Party tokens now only show movement types that ALL party members share
+  - If all characters can fly, fly appears as an option
+  - If only some can fly, fly is excluded from party token movement options
+  - Prevents invalid movement by restricting to common capabilities
+  - Integrates with existing movement calculation system
+  - Properly filters Teleport, Travel, Stride, Leap, Climb, Swim, Fly options
+
+- **Combat Tracker Integration**: Party tokens can now add all members to combat with one click
+  - Click the combat toggle button in Token HUD on a party token
+  - All party members are automatically added to the combat tracker
+  - Prevents duplicates if members are already in combat
+  - Works seamlessly with Foundry v13 combat system
+
+### Improved
+- **Form Party Dialog Width**: Dialog is now wider and more responsive
+  - Increased from 400px minimum to 550px minimum width
+  - Added maximum width of 700px with responsive sizing
+  - Dropdown text now fits properly without truncation
+  - Image file path input is much larger (minimum 250px)
+  - Better handling of long character names in dropdowns
+
+- **Last Formation Memory**: Formation dropdown now properly remembers last selection
+  - If you used "Standard" (custom) formation, it shows as default next time
+  - If you used a preset (Line, Column, etc.), that preset is default next time
+  - Adds "(Last Used)" indicator to the previously selected formation
+  - No longer creates duplicate "Last Used" option in dropdown
+  - Works for both custom/standard and preset formations
+
+### Fixed
+- **Formation Dropdown Logic**: Corrected how last formation is displayed
+  - Removed confusing "Last Used: Standard" separate option
+  - Now properly selects and marks the last formation in the main list
+  - Standard formation correctly shown as last used when appropriate
+
+### Technical Details
+- Added `libWrapper` hook for `TokenHUD.prototype._getLocomotionTypes` to filter movement options
+- Added `libWrapper` hook for `Token.prototype._onToggleCombat` to handle party combat addition
+- Updated libWrapper hook count from 1 to 3 in initialization logging
+- CSS updates for responsive dialog width and better input sizing
+- Formation options logic simplified and corrected in Form Party macro
+- Movement type filtering uses party's calculated common movement types from flags
+
 ## [2.3.2] - 2025-10-30
 
 ### Added
