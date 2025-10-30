@@ -484,62 +484,6 @@ function setupTokenHUD() {
 }
 
 // ==============================================
-// LIGHT SOURCE CYCLING
-// ==============================================
-
-/**
- * Cycle through available light sources on a party token
- * @param {Token} partyToken - The party token to cycle lights on
- */
-async function cycleLightSource(partyToken) {
-  const availableLights = partyToken.document.getFlag('party-vision', 'availableLights') || [];
-  const currentIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') || 0;
-  
-  if (availableLights.length === 0) {
-    console.log('Party Vision | No available lights to cycle');
-    return;
-  }
-  
-  // Calculate next index (cycle through lights + "no light" option)
-  // availableLights has N entries, plus 1 for "no light" = N+1 total options
-  const totalOptions = availableLights.length + 1; // +1 for "no light" option
-  const nextIndex = (currentIndex + 1) % totalOptions;
-  
-  // Update the active light index
-  await partyToken.document.setFlag('party-vision', 'activeLightIndex', nextIndex);
-  
-  // Apply the light
-  if (nextIndex < availableLights.length) {
-    // Apply a specific character's light
-    const lightSource = availableLights[nextIndex];
-    await partyToken.document.update({ light: lightSource.light });
-    console.log(`Party Vision | Now using ${lightSource.actorName}'s light`);
-  } else {
-    // "No light" option - turn off all lighting
-    await partyToken.document.update({ 
-      light: {
-        bright: 0,
-        dim: 0,
-        angle: 360,
-        color: null,
-        alpha: 0.5,
-        animation: {},
-        coloration: 1,
-        luminosity: 0.5,
-        attenuation: 0.5,
-        contrast: 0,
-        saturation: 0,
-        shadows: 0
-      }
-    });
-    console.log('Party Vision | Party lighting turned off');
-  }
-  
-  // Refresh the token
-  partyToken.refresh();
-}
-
-// ==============================================
 // VISUAL INDICATORS SETUP
 // ==============================================
 
