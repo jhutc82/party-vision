@@ -2,6 +2,29 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.4.9] - 2025-10-31
+
+### Fixed
+- **Lighting Detection System**: Restored comprehensive 4-strategy lighting detection from v2.4.0 that was missing in v2.4.8
+  - Strategy 1: Check deployed tokens on scene
+  - Strategy 2: Get computed token data with effects applied
+  - Strategy 2.5: Manually apply active effects to prototype token
+  - **Strategy 3: Check for equipped light-emitting items** (PF2e torches, D&D5e lanterns, etc.) - **THIS WAS MISSING**
+  - Strategy 4: Fall back to prototype token
+- **Item Change Detection**: Added hooks for `createItem`, `updateItem`, and `deleteItem` to detect when players equip/unequip/consume light sources
+- **Lighting Updates**: All lighting update hooks now use debounced updates to prevent flickering and excessive updates
+- **Complete Light Properties**: Lighting now properly includes all light properties (coloration, luminosity, attenuation, contrast, saturation, shadows) not just bright/dim
+
+### Technical Improvements
+- Added `debouncedUpdatePartyLighting()` wrapper function for all lighting update hooks
+- Updated `aggregateLights()` to include all light properties with proper defaults
+- Enhanced `updatePartyLightingFromActors()` with comprehensive multi-strategy detection and 100ms wait for system processing
+- Added detailed console logging for lighting detection debugging (shows which strategy found light for each actor)
+- Updated public API exports to include `debouncedUpdatePartyLighting` and `aggregateLights`
+
+### Notes
+This version restores the lighting functionality from the macro-based v2.4.0 that was inadvertently simplified in the function-based v2.4.8 refactor. Party tokens will now properly detect and display light from equipped items, active effects, and all other light sources.
+
 ## [2.4.8] - 2025-10-31
 
 ### Added
