@@ -2916,6 +2916,8 @@ function determineNaturalFacingFromOffsets(dx, dy) {
 // Export for use by macros
 window.PartyVision = {
   deployParty,
+  showSplitPartyDialog,
+  splitAndDeployMembers,
   updatePartyLighting,
   updatePartyLightingFromActors,
   cycleLightSource,
