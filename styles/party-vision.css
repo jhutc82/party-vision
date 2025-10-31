@@ -127,8 +127,15 @@
   line-height: 1.5;
   white-space: normal;
   overflow: visible;
-  background: #222;
-  color: #ddd;
+  background: #fff;
+  color: #000;
+}
+
+/* For browsers that support it, style the dropdown menu */
+.pv-form-party .form-group select option:checked,
+.pv-form-party .form-group select option:hover {
+  background: #0088ff;
+  color: #fff;
 }
 
 .pv-form-party .form-group input[type="text"]:focus,

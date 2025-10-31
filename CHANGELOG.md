@@ -2,6 +2,23 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.4.7] - 2025-10-31
+
+### Fixed
+- **Token Images on Deployment**: Tokens now properly display their actor token images when deployed instead of being blank. Changed from `img` property to `texture.src` for Foundry v13 compatibility.
+- **Party Token Image**: Party tokens now properly use the selected custom image instead of defaulting to actor portrait.
+- **Pathfinder 2e Movement API**: Updated to use PF2e v7.5+ movement API (`system.movement.speeds`) to eliminate deprecation warnings. Module now checks modern paths first, then falls back to older paths for backward compatibility.
+- **Dropdown Text Colors**: Fixed white text in dropdown options by changing option backgrounds to white with black text for proper visibility.
+- **Browse Button Size**: Constrained browse button to max 120px width so it doesn't hide the filename input field.
+- **Formation Label Visibility**: Ensured formation labels and select elements have proper sizing and visibility in all dialogs.
+- **Auto-Deploy Single Member**: When splitting a party down to 1 remaining member, that member is now automatically deployed since a party of one isn't really a party.
+
+### Technical Improvements
+- Added `getActorSpeed()` helper function for system-agnostic movement speed detection
+- Updated token creation to use Foundry v13's `texture.src` format instead of deprecated `img` property
+- Enhanced movement detection with fallback chain: PF2e v7.5+ → D&D 5e → legacy paths
+- Improved split party logic to handle single-member edge case
+
 ## [2.4.6] - 2025-10-31
 
 ### Added
@@ -19,7 +36,6 @@ All notable changes to Party Vision will be documented in this file.
 - Updated all dialog styling to use consistent dark theme with light text
 - Improved form party dialog layout to accommodate new name and image inputs
 - Enhanced CSS for better contrast and readability across all dialogs
-- Updated module version to 2.4.6
 
 ## [2.4.5] - Previous Version
 
@@ -48,4 +64,3 @@ All notable changes to Party Vision will be documented in this file.
 - Movement capability calculations
 - Multi-strategy lighting detection
 - Wall collision detection
-

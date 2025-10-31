@@ -364,6 +364,30 @@ async function savePartyConfig(tokens, partyName, partyImage) {
 }
 
 /**
+ * Get movement speed from actor (system-agnostic)
+ * @param {Actor} actor - The actor to get speed from
+ * @returns {number} Movement speed
+ */
+function getActorSpeed(actor) {
+  let speed = 30; // Default
+  
+  // PF2e v7.5+ uses system.movement.speeds
+  if (actor.system.movement?.speeds?.land?.total !== undefined) {
+    speed = actor.system.movement.speeds.land.total;
+  } else if (actor.system.movement?.speeds?.walk?.total !== undefined) {
+    speed = actor.system.movement.speeds.walk.total;
+  } else if (actor.system.attributes?.movement?.walk !== undefined) {
+    speed = actor.system.attributes.movement.walk;
+  } else if (actor.system.attributes?.speed?.value !== undefined) {
+    speed = actor.system.attributes.speed.value;
+  } else if (actor.system.movement?.walk !== undefined) {
+    speed = actor.system.movement.walk;
+  }
+  
+  return speed;
+}
+
+/**
  * Show the Form Party dialog
  */
 async function showFormPartyDialog() {
@@ -397,13 +421,14 @@ async function showFormPartyDialog() {
   // Build member list HTML
   const memberListHTML = validTokens.map((token, index) => {
     const actor = token.actor;
+    const speed = getActorSpeed(actor);
     return `
       <div class="party-member" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
         <img src="${actor.img}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; border: 2px solid #555;">
         <div style="flex: 1;">
           <div style="font-weight: bold; color: #ddd;">${actor.name}</div>
           <div style="font-size: 0.85em; color: #aaa;">
-            ${actor.system.attributes?.movement?.walk || actor.system.attributes?.speed?.value || 'Unknown'} movement
+            ${speed} movement
           </div>
         </div>
         <input type="radio" name="leader" value="${index}" ${index === 0 ? 'checked' : ''} 
@@ -451,6 +476,13 @@ async function showFormPartyDialog() {
           border: 1px solid #555;
           color: #ddd;
           border-radius: 4px;
+          font-size: 14px;
+          min-height: 36px;
+        }
+        .form-party-dialog select option {
+          background: #fff;
+          color: #000;
+          padding: 8px;
         }
         .form-party-dialog .info-text {
           font-size: 0.85em;
@@ -493,6 +525,10 @@ async function showFormPartyDialog() {
           border-radius: 4px;
           cursor: pointer;
           transition: all 0.2s ease;
+          flex-shrink: 0;
+          white-space: nowrap;
+          min-width: auto;
+          max-width: 120px;
         }
         .form-party-dialog .image-input-group button:hover {
           background: #0099ff;
@@ -688,7 +724,9 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
   // Create party token at leader's position
   const partyTokenData = {
     name: partyName,
-    img: partyImage,
+    texture: {
+      src: partyImage
+    },
     x: leaderToken.x,
     y: leaderToken.y,
     width: maxWidth,
@@ -802,11 +840,21 @@ function calculateMovementCapabilities(tokens) {
     let speed = 30; // Default
     
     // Try various common locations for movement speed
-    if (actor.system.attributes?.movement?.walk !== undefined) {
+    // PF2e v7.5+ uses system.movement.speeds
+    if (actor.system.movement?.speeds?.land?.total !== undefined) {
+      // PF2e v7.5+ land speed
+      speed = actor.system.movement.speeds.land.total;
+    } else if (actor.system.movement?.speeds?.walk?.total !== undefined) {
+      // PF2e v7.5+ walk speed (alternative naming)
+      speed = actor.system.movement.speeds.walk.total;
+    } else if (actor.system.attributes?.movement?.walk !== undefined) {
+      // Generic D&D-style path
       speed = actor.system.attributes.movement.walk;
     } else if (actor.system.attributes?.speed?.value !== undefined) {
+      // Old generic path (deprecated in PF2e but still used elsewhere)
       speed = actor.system.attributes.speed.value;
     } else if (actor.system.movement?.walk !== undefined) {
+      // Alternative path
       speed = actor.system.movement.walk;
     }
     
@@ -814,7 +862,18 @@ function calculateMovementCapabilities(tokens) {
     
     // Track movement types
     const types = [];
-    if (actor.system.attributes?.movement) {
+    
+    // PF2e v7.5+ movement types
+    if (actor.system.movement?.speeds) {
+      Object.keys(actor.system.movement.speeds).forEach(type => {
+        const speedData = actor.system.movement.speeds[type];
+        if (speedData && (speedData.total > 0 || speedData.value > 0)) {
+          types.push(type);
+        }
+      });
+    }
+    // Fallback to older path
+    else if (actor.system.attributes?.movement) {
       Object.keys(actor.system.attributes.movement).forEach(type => {
         if (actor.system.attributes.movement[type] > 0) {
           types.push(type);
@@ -892,6 +951,7 @@ async function showDeployDialog(partyToken) {
           color: #ddd;
           font-weight: bold;
           margin-bottom: 8px;
+          font-size: 14px;
         }
         .deploy-party-dialog select {
           width: 100%;
@@ -900,6 +960,13 @@ async function showDeployDialog(partyToken) {
           border: 1px solid #555;
           color: #ddd;
           border-radius: 4px;
+          font-size: 14px;
+          min-height: 36px;
+        }
+        .deploy-party-dialog select option {
+          background: #fff;
+          color: #000;
+          padding: 8px;
         }
         .deploy-party-dialog .info-text {
           font-size: 0.85em;
@@ -1117,7 +1184,10 @@ async function deployParty(partyToken, formationKey, direction) {
     // Create token data
     const tokenData = {
       name: actor.name,
-      img: actor.img,
+      // Use the proper token image from prototypeToken, not actor portrait
+      texture: {
+        src: actor.prototypeToken.texture.src
+      },
       actorId: actor.id,
       x: deployX,
       y: deployY,
@@ -1401,7 +1471,10 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
       
       const tokenData = {
         name: actor.name,
-        img: actor.img,
+        // Use the proper token image from prototypeToken
+        texture: {
+          src: actor.prototypeToken.texture.src
+        },
         actorId: actor.id,
         x: finalX,
         y: finalY,
@@ -1420,7 +1493,52 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
   // Create deployed tokens
   const createdTokens = await canvas.scene.createEmbeddedDocuments("Token", tokenCreationData);
   
-  if (remainingMembers.length > 0) {
+  // Check if only 1 member remains - auto-deploy them
+  if (remainingMembers.length === 1) {
+    console.log('Party Vision | Only 1 member remaining, auto-deploying');
+    
+    const lastMember = remainingMembers[0];
+    const actor = game.actors.get(lastMember.actorId);
+    
+    if (actor) {
+      const finalGridX = partyGridX + lastMember.dx;
+      const finalGridY = partyGridY + lastMember.dy;
+      const finalX = finalGridX * gridSize;
+      const finalY = finalGridY * gridSize;
+      
+      const lastTokenData = {
+        name: actor.name,
+        texture: {
+          src: actor.prototypeToken.texture.src
+        },
+        actorId: actor.id,
+        x: finalX,
+        y: finalY,
+        width: actor.prototypeToken.width,
+        height: actor.prototypeToken.height,
+        light: lastMember.originalLight || {}
+      };
+      
+      // Create the last member's token
+      const lastCreated = await canvas.scene.createEmbeddedDocuments("Token", [lastTokenData]);
+      
+      // Delete party token
+      await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+      
+      ui.notifications.info(`All ${createdTokens.length + 1} members deployed. Party disbanded.`);
+      
+      // Select all deployed tokens including the last one
+      const allDeployedTokens = [...createdTokens, ...lastCreated].map(doc => canvas.tokens.get(doc.id)).filter(t => t);
+      allDeployedTokens.forEach((token, index) => {
+        token.control({ releaseOthers: index === 0 ? true : false });
+      });
+    } else {
+      // Couldn't find last member's actor, just delete party token
+      await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+      ui.notifications.warn(`Deployed ${createdTokens.length} members. Could not deploy last member.`);
+    }
+  }
+  else if (remainingMembers.length > 1) {
     // Update party token with remaining members
     await partyToken.document.setFlag('party-vision', 'memberData', remainingMembers);
     
