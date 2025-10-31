@@ -2,6 +2,37 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.4.8] - 2025-10-31
+
+### Added
+- **Custom Formation Persistence**: Custom formations are now saved per party. When you form a party with "Custom" selected, the current token positions are saved and available as "Saved Custom Formation" when deploying that party in the future.
+- **Party Leader Persistence**: The selected party leader is now saved per party composition and automatically pre-selected when forming the same party again.
+- **Combined Deploy/Split Dialog**: The deploy and split party dialogs have been merged into a single, more intuitive interface. You can now select which members to deploy and choose formation/direction all in one dialog.
+- **Quick Select Buttons**: Added "Select All" and "Select None" buttons to the member selection interface for easier party splitting.
+- **Formation Descriptions**: Formation dropdown now shows descriptions for each formation type to help you choose the right one.
+
+### Fixed
+- **Preset Formations Now Functional**: All preset formations (Column, Line, Wedge, Circle, Staggered, Box, Tight, Wide) now properly apply their transforms when deploying. Previously, the transform functions were defined but never used.
+- **Formation Scaling**: All preset formations now properly scale for any party size (2-100+ members), dynamically adjusting spacing and arrangement based on the number of party members.
+- **Split Party Single Character Bug**: Fixed issue where selecting only one character to split would deploy the entire party. Now correctly deploys only selected members.
+- **Wall Collision Detection**: All formations now properly respect walls and avoid placing tokens through obstacles.
+- **Formation Rotation**: Formations now correctly rotate when deploying in different directions while maintaining their shape integrity.
+
+### Changed
+- Removed separate "Split Party" button from deploy dialog - functionality is now integrated into the main deploy dialog
+- Formation selection now remembers the last formation used for each party
+- Member checkboxes now show a star icon next to the party leader
+- Improved visual feedback for selected members with enhanced styling
+- Formation presets now use transform functions consistently for all deployment scenarios
+
+### Technical Improvements
+- Refactored `deployParty()` to properly use formation transform functions from `formations.js`
+- Enhanced `splitAndDeployMembers()` to accept formation and direction parameters
+- Added formation key and custom formation data to party token flags for persistence
+- Improved `savePartyConfig()` to store leader actor ID and custom formation offsets
+- Custom formations stored with actor ID mapping for reliable position restoration
+- All formations now use the same deployment pipeline for consistency
+
 ## [2.4.7] - 2025-10-31
 
 ### Fixed

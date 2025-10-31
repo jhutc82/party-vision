@@ -1,6 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
-// Version 2.4.6 - Enhanced Party Management
+// Version 2.4.8 - Enhanced Party Management
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -34,7 +34,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.4.6');
+  console.log('Party Vision | Initializing Enhanced Module v2.4.8');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -348,19 +348,29 @@ function getSavedPartyConfig(tokens) {
  * @param {Array<Token>} tokens - Array of tokens
  * @param {string} partyName - Name for the party
  * @param {string} partyImage - Image path for the party token
+ * @param {number} leaderIndex - Index of the leader
+ * @param {Object} customFormation - Optional custom formation data
  */
-async function savePartyConfig(tokens, partyName, partyImage) {
+async function savePartyConfig(tokens, partyName, partyImage, leaderIndex = 0, customFormation = null) {
   const key = generatePartyConfigKey(tokens);
   const savedConfigs = game.settings.get('party-vision', 'savedPartyConfigs');
   
-  savedConfigs[key] = {
+  const config = {
     name: partyName,
     image: partyImage,
+    leaderActorId: tokens[leaderIndex]?.actor?.id,
     savedAt: Date.now()
   };
   
+  // Save custom formation if provided
+  if (customFormation) {
+    config.customFormation = customFormation;
+  }
+  
+  savedConfigs[key] = config;
+  
   await game.settings.set('party-vision', 'savedPartyConfigs', savedConfigs);
-  console.log(`Party Vision | Saved configuration for party: ${partyName}`);
+  console.log(`Party Vision | Saved configuration for party: ${partyName}`, config);
 }
 
 /**
@@ -418,6 +428,13 @@ async function showFormPartyDialog() {
   const defaultName = savedConfig?.name || `Party`;
   const defaultImage = savedConfig?.image || validTokens[0].actor.img;
   
+  // Determine default leader index
+  let defaultLeaderIndex = 0;
+  if (savedConfig?.leaderActorId) {
+    const leaderIdx = validTokens.findIndex(t => t.actor?.id === savedConfig.leaderActorId);
+    if (leaderIdx >= 0) defaultLeaderIndex = leaderIdx;
+  }
+  
   // Build member list HTML
   const memberListHTML = validTokens.map((token, index) => {
     const actor = token.actor;
@@ -431,17 +448,22 @@ async function showFormPartyDialog() {
             ${speed} movement
           </div>
         </div>
-        <input type="radio" name="leader" value="${index}" ${index === 0 ? 'checked' : ''} 
+        <input type="radio" name="leader" value="${index}" ${index === defaultLeaderIndex ? 'checked' : ''} 
                style="margin-left: 12px; transform: scale(1.2);" title="Set as leader">
       </div>
     `;
   }).join('');
   
-  // Formation presets dropdown
-  const formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
+  // Formation presets dropdown - include custom formation if saved
+  let formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
     const preset = FORMATION_PRESETS[key];
     return `<option value="${key}">${preset.name}</option>`;
   }).join('');
+  
+  // Add saved custom formation option if it exists
+  if (savedConfig?.customFormation) {
+    formationOptions += `<option value="saved-custom">Saved Custom Formation</option>`;
+  }
   
   const lastPreset = game.settings.get('party-vision', 'lastFormationPreset');
   
@@ -589,14 +611,38 @@ async function showFormPartyDialog() {
           const partyName = html.find('#party-name').val().trim() || 'Party';
           const partyImage = html.find('#party-image').val().trim() || defaultImage;
           
-          // Save configuration
-          await savePartyConfig(validTokens, partyName, partyImage);
+          // Prepare custom formation data if using custom or saved-custom
+          let customFormation = null;
+          if (formationKey === 'custom') {
+            // Save current positions as custom formation
+            customFormation = {
+              offsets: validTokens.map((token, i) => {
+                const leaderToken = validTokens[leaderIndex];
+                const gridSize = canvas.grid.size;
+                const leaderGridX = leaderToken.x / gridSize;
+                const leaderGridY = leaderToken.y / gridSize;
+                const tokenGridX = token.x / gridSize;
+                const tokenGridY = token.y / gridSize;
+                return {
+                  actorId: token.actor.id,
+                  dx: tokenGridX - leaderGridX,
+                  dy: tokenGridY - leaderGridY
+                };
+              }),
+              savedAt: Date.now()
+            };
+          } else if (formationKey === 'saved-custom' && savedConfig?.customFormation) {
+            customFormation = savedConfig.customFormation;
+          }
+          
+          // Save configuration with leader and custom formation
+          await savePartyConfig(validTokens, partyName, partyImage, leaderIndex, customFormation);
           
           // Save last used formation
           await game.settings.set('party-vision', 'lastFormationPreset', formationKey);
           
           // Form the party
-          await formParty(validTokens, leaderIndex, formationKey, partyName, partyImage);
+          await formParty(validTokens, leaderIndex, formationKey, partyName, partyImage, customFormation);
         }
       },
       cancel: {
@@ -641,8 +687,9 @@ async function showFormPartyDialog() {
  * @param {string} formationKey - Formation preset key
  * @param {string} partyName - Name for the party token
  * @param {string} partyImage - Image path for the party token
+ * @param {Object} customFormation - Optional custom formation data
  */
-async function formParty(tokens, leaderIndex, formationKey, partyName, partyImage) {
+async function formParty(tokens, leaderIndex, formationKey, partyName, partyImage, customFormation = null) {
   if (tokens.length < 2) {
     ui.notifications.warn("Need at least 2 tokens to form a party.");
     return;
@@ -746,7 +793,9 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
         naturalFacing: naturalFacing,
         movement: movementData,
         formedAt: Date.now(),
-        partyName: partyName
+        partyName: partyName,
+        formationKey: formationKey,
+        customFormation: customFormation
       }
     }
   };
@@ -906,7 +955,7 @@ function calculateMovementCapabilities(tokens) {
 // ==============================================
 
 /**
- * Show the Deploy Party dialog
+ * Show the Deploy/Split Party dialog
  * @param {Token} partyToken - The party token to deploy
  */
 async function showDeployDialog(partyToken) {
@@ -919,12 +968,32 @@ async function showDeployDialog(partyToken) {
   
   const naturalFacing = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
   const lastDirection = game.settings.get('party-vision', 'lastDeployDirection');
+  const savedFormationKey = partyToken.document.getFlag('party-vision', 'formationKey') || 'current';
+  const customFormation = partyToken.document.getFlag('party-vision', 'customFormation');
+  
+  // Build member checkboxes for split functionality
+  const memberCheckboxes = memberData.map((member, index) => {
+    return `
+      <div class="member-checkbox" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
+        <input type="checkbox" id="member-${index}" value="${index}" checked style="margin-right: 12px; transform: scale(1.3);">
+        <img src="${member.img}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
+        <label for="member-${index}" style="flex: 1; color: #ddd; cursor: pointer;">
+          ${member.name}${member.isLeader ? ' <i class="fas fa-star" style="color: #00ff88;"></i>' : ''}
+        </label>
+      </div>
+    `;
+  }).join('');
   
   // Formation presets dropdown
-  const formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
+  let formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
     const preset = FORMATION_PRESETS[key];
-    return `<option value="${key}">${preset.name}</option>`;
+    return `<option value="${key}">${preset.name} - ${preset.description}</option>`;
   }).join('');
+  
+  // Add saved custom formation if available
+  if (customFormation) {
+    formationOptions += `<option value="saved-custom">Saved Custom Formation</option>`;
+  }
   
   const lastPreset = game.settings.get('party-vision', 'lastFormationPreset');
   
@@ -937,11 +1006,14 @@ async function showDeployDialog(partyToken) {
           font-family: "Signika", sans-serif;
         }
         .deploy-party-dialog h3 {
-          margin: 0 0 12px 0;
+          margin: 15px 0 12px 0;
           color: #ddd;
           font-size: 1.1em;
           border-bottom: 2px solid #ff8800;
           padding-bottom: 8px;
+        }
+        .deploy-party-dialog h3:first-child {
+          margin-top: 0;
         }
         .deploy-party-dialog .section {
           margin: 15px 0;
@@ -1008,11 +1080,33 @@ async function showDeployDialog(partyToken) {
           font-size: 28px;
           color: #ddd;
         }
+        .deploy-party-dialog .member-list {
+          max-height: 300px;
+          overflow-y: auto;
+        }
+        .deploy-party-dialog .quick-select {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .deploy-party-dialog .quick-select button {
+          padding: 6px 12px;
+          background: rgba(0,0,0,0.4);
+          border: 1px solid #555;
+          color: #ddd;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .deploy-party-dialog .quick-select button:hover {
+          background: rgba(255, 136, 0, 0.2);
+          border-color: #ff8800;
+        }
       </style>
       <div class="deploy-party-dialog">
-        <h3>Deploy ${memberData.length} Party Members</h3>
+        <h3>Formation & Direction</h3>
         <div class="info-text">
-          <i class="fas fa-info-circle"></i> Natural facing: ${naturalFacing.toUpperCase()}. Select deployment direction and formation.
+          <i class="fas fa-info-circle"></i> Natural facing: ${naturalFacing.toUpperCase()}. Select deployment formation and direction.
         </div>
         
         <div class="section">
@@ -1048,27 +1142,52 @@ async function showDeployDialog(partyToken) {
             <div class="direction-btn empty"></div>
           </div>
         </div>
+        
+        <h3>Select Members to Deploy</h3>
+        <div class="info-text">
+          <i class="fas fa-user-friends"></i> Choose which members to deploy. Unchecked members remain in the party token.
+        </div>
+        <div class="section">
+          <div class="quick-select">
+            <button type="button" id="select-all">Select All</button>
+            <button type="button" id="select-none">Select None</button>
+          </div>
+          <div class="member-list">
+            ${memberCheckboxes}
+          </div>
+        </div>
       </div>
     `,
     buttons: {
       deploy: {
-        label: '<i class="fas fa-chevron-circle-right"></i> Deploy',
+        label: '<i class="fas fa-chevron-circle-right"></i> Deploy Selected',
         callback: async (html) => {
           const formationKey = html.find('#deploy-formation').val();
           const direction = html.find('.direction-btn.selected').data('direction') || 'north';
+          
+          // Get selected member indices
+          const selectedIndices = [];
+          html.find('input[type="checkbox"]:checked').each(function() {
+            selectedIndices.push(parseInt($(this).val()));
+          });
+          
+          if (selectedIndices.length === 0) {
+            ui.notifications.warn("Select at least one member to deploy.");
+            return;
+          }
           
           // Save last used values
           await game.settings.set('party-vision', 'lastFormationPreset', formationKey);
           await game.settings.set('party-vision', 'lastDeployDirection', direction);
           
-          // Deploy the party
-          await deployParty(partyToken, formationKey, direction);
-        }
-      },
-      split: {
-        label: '<i class="fas fa-user-friends"></i> Split Party',
-        callback: async () => {
-          await showSplitPartyDialog(partyToken);
+          // Deploy based on selection
+          if (selectedIndices.length === memberData.length) {
+            // Deploy all members
+            await deployParty(partyToken, formationKey, direction);
+          } else {
+            // Split and deploy selected
+            await splitAndDeployMembers(partyToken, selectedIndices, formationKey, direction);
+          }
         }
       },
       cancel: {
@@ -1078,8 +1197,11 @@ async function showDeployDialog(partyToken) {
     },
     default: "deploy",
     render: (html) => {
-      // Select last used formation
-      html.find('#deploy-formation').val(lastPreset);
+      // Select last used formation, or use saved formation
+      const formationToSelect = savedFormationKey && html.find(`#deploy-formation option[value="${savedFormationKey}"]`).length > 0 
+        ? savedFormationKey 
+        : lastPreset;
+      html.find('#deploy-formation').val(formationToSelect);
       
       // Handle direction selection
       html.find('.direction-btn').on('click', function() {
@@ -1087,9 +1209,18 @@ async function showDeployDialog(partyToken) {
         html.find('.direction-btn').removeClass('selected');
         $(this).addClass('selected');
       });
+      
+      // Handle quick select buttons
+      html.find('#select-all').on('click', function() {
+        html.find('input[type="checkbox"]').prop('checked', true);
+      });
+      
+      html.find('#select-none').on('click', function() {
+        html.find('input[type="checkbox"]').prop('checked', false);
+      });
     }
   }, {
-    width: 450,
+    width: 500,
     classes: ["dialog", "party-vision-dialog"]
   }).render(true);
 }
@@ -1110,11 +1241,36 @@ async function deployParty(partyToken, formationKey, direction) {
   
   console.log(`Party Vision | Deploying party with formation: ${formationKey}, direction: ${direction}`);
   
-  // Get formation preset
-  const preset = FORMATION_PRESETS[formationKey];
-  if (!preset) {
-    ui.notifications.error(`Formation preset "${formationKey}" not found.`);
-    return;
+  // Get formation - could be preset, custom, or saved-custom
+  let formationFunc = null;
+  
+  if (formationKey === 'saved-custom') {
+    // Use saved custom formation
+    const customFormation = partyToken.document.getFlag('party-vision', 'customFormation');
+    if (customFormation) {
+      console.log('Party Vision | Using saved custom formation');
+      formationFunc = (dx, dy, index, total) => {
+        // Find the offset for this member by actor ID
+        const offset = customFormation.offsets.find(o => o.actorId === memberData[index].actorId);
+        return offset ? { dx: offset.dx, dy: offset.dy } : { dx, dy };
+      };
+    }
+  } else if (formationKey === 'custom') {
+    // Use current positions
+    console.log('Party Vision | Using current positions as custom formation');
+    formationFunc = (dx, dy) => ({ dx, dy });
+  } else {
+    // Use preset formation
+    const preset = FORMATION_PRESETS[formationKey];
+    if (preset && preset.transform) {
+      formationFunc = preset.transform;
+    }
+  }
+  
+  // Fall back to custom if no formation found
+  if (!formationFunc) {
+    console.warn(`Party Vision | Formation ${formationKey} not found, using custom`);
+    formationFunc = (dx, dy) => ({ dx, dy });
   }
   
   // Calculate rotation from natural facing to deployment direction
@@ -1139,24 +1295,15 @@ async function deployParty(partyToken, formationKey, direction) {
       continue;
     }
     
-    // Get position from formation or use stored offsets
-    let dx, dy;
-    if (preset.positions && i < preset.positions.length) {
-      const pos = preset.positions[i];
-      // Apply rotation to formation position
-      const rotated = rotatePosition(pos.x, pos.y, rotation);
-      dx = rotated.x;
-      dy = rotated.y;
-    } else {
-      // Use stored offsets with rotation
-      const rotated = rotatePosition(member.dx, member.dy, rotation);
-      dx = rotated.x;
-      dy = rotated.y;
-    }
+    // Apply formation transformation
+    const transformed = formationFunc(member.dx, member.dy, i, memberData.length);
+    
+    // Apply rotation to the transformed position
+    const rotated = rotatePosition(transformed.dx, transformed.dy, rotation);
     
     // Calculate final position
-    const finalGridX = partyGridX + dx;
-    const finalGridY = partyGridY + dy;
+    const finalGridX = partyGridX + rotated.x;
+    const finalGridY = partyGridY + rotated.y;
     const finalX = finalGridX * gridSize;
     const finalY = finalGridY * gridSize;
     
@@ -1184,7 +1331,6 @@ async function deployParty(partyToken, formationKey, direction) {
     // Create token data
     const tokenData = {
       name: actor.name,
-      // Use the proper token image from prototypeToken, not actor portrait
       texture: {
         src: actor.prototypeToken.texture.src
       },
@@ -1193,7 +1339,6 @@ async function deployParty(partyToken, formationKey, direction) {
       y: deployY,
       width: tokenWidth,
       height: tokenHeight,
-      // Restore original lighting if available
       light: member.originalLight || {}
     };
     
@@ -1342,99 +1487,13 @@ function findNearbyValidPosition(x, y, width, height) {
 }
 
 /**
- * Show the Split Party dialog
- * @param {Token} partyToken - The party token to split
- */
-async function showSplitPartyDialog(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  if (!memberData || memberData.length === 0) {
-    ui.notifications.warn("This token has no party data.");
-    return;
-  }
-  
-  // Build member checkboxes
-  const memberCheckboxes = memberData.map((member, index) => {
-    return `
-      <div class="member-checkbox" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
-        <input type="checkbox" id="member-${index}" value="${index}" checked style="margin-right: 12px; transform: scale(1.3);">
-        <img src="${member.img}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; border: 2px solid #555;">
-        <label for="member-${index}" style="flex: 1; color: #ddd; cursor: pointer;">${member.name}</label>
-      </div>
-    `;
-  }).join('');
-  
-  new Dialog({
-    title: "Split Party",
-    content: `
-      <style>
-        .split-party-dialog {
-          padding: 15px;
-          font-family: "Signika", sans-serif;
-        }
-        .split-party-dialog h3 {
-          margin: 0 0 12px 0;
-          color: #ddd;
-          font-size: 1.1em;
-          border-bottom: 2px solid #ff4444;
-          padding-bottom: 8px;
-        }
-        .split-party-dialog .info-text {
-          font-size: 0.85em;
-          color: #aaa;
-          margin: 8px 0 15px 0;
-          font-style: italic;
-        }
-        .split-party-dialog .member-list {
-          max-height: 400px;
-          overflow-y: auto;
-        }
-      </style>
-      <div class="split-party-dialog">
-        <h3>Select Members to Deploy</h3>
-        <div class="info-text">
-          <i class="fas fa-info-circle"></i> Choose which members to deploy. Unchecked members will remain in the party token.
-        </div>
-        <div class="member-list">
-          ${memberCheckboxes}
-        </div>
-      </div>
-    `,
-    buttons: {
-      deploy: {
-        label: '<i class="fas fa-user-friends"></i> Deploy Selected',
-        callback: async (html) => {
-          const selectedIndices = [];
-          html.find('input[type="checkbox"]:checked').each(function() {
-            selectedIndices.push(parseInt($(this).val()));
-          });
-          
-          if (selectedIndices.length === 0) {
-            ui.notifications.warn("Select at least one member to deploy.");
-            return;
-          }
-          
-          await splitAndDeployMembers(partyToken, selectedIndices);
-        }
-      },
-      cancel: {
-        label: '<i class="fas fa-times"></i> Cancel',
-        callback: () => {}
-      }
-    },
-    default: "deploy"
-  }, {
-    width: 450,
-    classes: ["dialog", "party-vision-dialog", "party-vision-split-dialog"]
-  }).render(true);
-}
-
-/**
  * Split and deploy selected party members
  * @param {Token} partyToken - The party token
  * @param {Array<number>} memberIndices - Indices of members to deploy
+ * @param {string} formationKey - Formation preset key (optional, defaults to 'custom')
+ * @param {string} direction - Deployment direction (optional, defaults to 'north')
  */
-async function splitAndDeployMembers(partyToken, memberIndices) {
+async function splitAndDeployMembers(partyToken, memberIndices, formationKey = 'custom', direction = 'north') {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   
   if (!memberData || memberData.length === 0) {
@@ -1444,6 +1503,35 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
   
   console.log(`Party Vision | Splitting party - deploying ${memberIndices.length} of ${memberData.length} members`);
   
+  // Get formation function
+  let formationFunc = null;
+  
+  if (formationKey === 'saved-custom') {
+    const customFormation = partyToken.document.getFlag('party-vision', 'customFormation');
+    if (customFormation) {
+      formationFunc = (dx, dy, index, total) => {
+        const member = memberData[memberIndices[index]];
+        const offset = customFormation.offsets.find(o => o.actorId === member.actorId);
+        return offset ? { dx: offset.dx, dy: offset.dy } : { dx, dy };
+      };
+    }
+  } else if (formationKey === 'custom') {
+    formationFunc = (dx, dy) => ({ dx, dy });
+  } else {
+    const preset = FORMATION_PRESETS[formationKey];
+    if (preset && preset.transform) {
+      formationFunc = preset.transform;
+    }
+  }
+  
+  if (!formationFunc) {
+    formationFunc = (dx, dy) => ({ dx, dy });
+  }
+  
+  // Calculate rotation
+  const naturalFacing = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
+  const rotation = calculateRotationDelta(naturalFacing, direction);
+  
   const gridSize = canvas.grid.size;
   const partyGridX = partyToken.x / gridSize;
   const partyGridY = partyToken.y / gridSize;
@@ -1451,6 +1539,7 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
   const tokenCreationData = [];
   const remainingMembers = [];
   
+  // Process each member
   for (let i = 0; i < memberData.length; i++) {
     const member = memberData[i];
     
@@ -1463,23 +1552,49 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
         continue;
       }
       
+      // Find this member's index in the selected array for formation calculation
+      const selectedIndex = memberIndices.indexOf(i);
+      
+      // Apply formation transformation
+      const transformed = formationFunc(member.dx, member.dy, selectedIndex, memberIndices.length);
+      
+      // Apply rotation
+      const rotated = rotatePosition(transformed.dx, transformed.dy, rotation);
+      
       // Calculate position
-      const finalGridX = partyGridX + member.dx;
-      const finalGridY = partyGridY + member.dy;
+      const finalGridX = partyGridX + rotated.x;
+      const finalGridY = partyGridY + rotated.y;
       const finalX = finalGridX * gridSize;
       const finalY = finalGridY * gridSize;
       
+      // Check for wall collisions
+      const tokenWidth = actor.prototypeToken.width;
+      const tokenHeight = actor.prototypeToken.height;
+      
+      let deployX = finalX;
+      let deployY = finalY;
+      
+      if (hasWallCollision(finalX + (tokenWidth * gridSize) / 2, finalY + (tokenHeight * gridSize) / 2, tokenWidth, tokenHeight)) {
+        const nearbyPos = findNearbyValidPosition(finalX, finalY, tokenWidth, tokenHeight);
+        if (nearbyPos) {
+          deployX = nearbyPos.x;
+          deployY = nearbyPos.y;
+        } else {
+          deployX = partyToken.x;
+          deployY = partyToken.y;
+        }
+      }
+      
       const tokenData = {
         name: actor.name,
-        // Use the proper token image from prototypeToken
         texture: {
           src: actor.prototypeToken.texture.src
         },
         actorId: actor.id,
-        x: finalX,
-        y: finalY,
-        width: actor.prototypeToken.width,
-        height: actor.prototypeToken.height,
+        x: deployX,
+        y: deployY,
+        width: tokenWidth,
+        height: tokenHeight,
         light: member.originalLight || {}
       };
       
@@ -1501,8 +1616,12 @@ async function splitAndDeployMembers(partyToken, memberIndices) {
     const actor = game.actors.get(lastMember.actorId);
     
     if (actor) {
-      const finalGridX = partyGridX + lastMember.dx;
-      const finalGridY = partyGridY + lastMember.dy;
+      // Apply formation to last member too
+      const transformed = formationFunc(lastMember.dx, lastMember.dy, 0, 1);
+      const rotated = rotatePosition(transformed.dx, transformed.dy, rotation);
+      
+      const finalGridX = partyGridX + rotated.x;
+      const finalGridY = partyGridY + rotated.y;
       const finalX = finalGridX * gridSize;
       const finalY = finalGridY * gridSize;
       
