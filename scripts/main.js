@@ -1,5 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
+// Version 2.4.5 - Comprehensive Fix Release
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -33,7 +34,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.4.1');
+  console.log('Party Vision | Initializing Enhanced Module v2.4.5');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -116,284 +117,112 @@ Hooks.once('init', () => {
 
   game.settings.register('party-vision', 'showRangeIndicator', {
     name: "Show Range Indicator",
-    hint: "Display a circle showing the party's spread radius.",
+    hint: "Show visual indicator of party member spread distance.",
     scope: 'world',
     config: true,
     type: Boolean,
     default: true,
   });
 
-  game.settings.register('party-vision', 'savedFormations', {
-    name: "Custom Formations",
-    hint: "Your saved custom formations (use the UI to manage these).",
-    scope: 'world',
-    config: false,
-    type: Object,
-    default: {}
-  });
-
-  game.settings.register('party-vision', 'savedPartyConfigs', {
-    name: "Saved Party Configurations",
-    hint: "Remembers party names and images for specific token combinations.",
-    scope: 'world',
-    config: false,
-    type: Object,
-    default: {}
-  });
-
-  game.settings.register('party-vision', 'lastUsedFormation', {
-    name: "Last Used Formation",
-    hint: "Remembers the last formation preset used when forming a party.",
-    scope: 'world',
+  game.settings.register('party-vision', 'lastFormationPreset', {
+    name: "Last Formation Preset",
+    hint: "Remembers the last formation preset used.",
+    scope: 'client',
     config: false,
     type: String,
-    default: ''
+    default: 'current'
   });
 
-  game.settings.register('party-vision', 'savedCustomFormation', {
-    name: "Saved Custom Formation",
-    hint: "Stores the positions of your last custom formation so you can restore it later.",
-    scope: 'world',
+  game.settings.register('party-vision', 'lastDeployDirection', {
+    name: "Last Deploy Direction",
+    hint: "Remembers the last direction the party was deployed.",
+    scope: 'client',
     config: false,
-    type: Object,
-    default: null
+    type: String,
+    default: 'north'
   });
 
-  game.settings.register('party-vision', 'calculateMovement', {
-    name: "Calculate Movement Capabilities",
-    hint: "Automatically calculate party movement speed and types based on members. Disable if this causes issues with your game system.",
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true,
-  });
-
-  game.settings.register('party-vision', 'showMovementInfo', {
-    name: "Show Movement Info on Token",
-    hint: "Display movement speed and types on the party token nameplate.",
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true,
-  });
-
-  game.settings.register('party-vision', 'roundMovementSpeed', {
-    name: "Round Movement Speeds",
-    hint: "Round calculated speeds to nearest 5 for cleaner display (e.g., 32 becomes 30).",
-    scope: 'world',
-    config: true,
-    type: Boolean,
-    default: true,
-  });
-
-  // --- REGISTER KEYBINDINGS (MUST BE IN INIT HOOK) ---
+  console.log('Party Vision | Settings registered successfully');
+  
+  // --- CHECK DEPENDENCIES ---
+  
+  // Check for libWrapper
+  if (typeof libWrapper !== 'function') {
+    console.error('Party Vision | libWrapper not found! This module requires libWrapper to function.');
+    ui.notifications.error('Party Vision requires the libWrapper module. Please install it from the Foundry module browser.');
+    return;
+  }
+  
+  console.log('Party Vision | libWrapper detected');
+  
+  // Register libWrapper hooks
+  try {
+    // Wrap Token._refreshVisibility to allow multiple users to see from the same party token
+    libWrapper.register('party-vision', 'Token.prototype._refreshVisibility', function(wrapped, ...args) {
+      // Call original method
+      const result = wrapped(...args);
+      
+      // Check if this is a party token
+      const memberData = this.document.getFlag('party-vision', 'memberData');
+      if (!memberData || memberData.length === 0) {
+        return result;
+      }
+      
+      // For party tokens, make visible to all members
+      // This allows each player to see from the party token using their character's vision
+      const memberActorIds = memberData.map(m => m.actorId);
+      
+      // Check if current user owns any of the member actors
+      const currentUserOwns = memberActorIds.some(actorId => {
+        const actor = game.actors.get(actorId);
+        return actor && actor.testUserPermission(game.user, "OWNER");
+      });
+      
+      if (currentUserOwns) {
+        this.visible = true;
+        this.renderable = true;
+      }
+      
+      return result;
+    }, 'WRAPPER');
+    
+    console.log('Party Vision | Vision hooks registered successfully');
+  } catch (e) {
+    console.error('Party Vision | Failed to register libWrapper hooks:', e);
+    ui.notifications.error('Party Vision failed to initialize vision system. Check console for details.');
+  }
+  
+  // Register keybinding for Follow-the-Leader toggle
   game.keybindings.register('party-vision', 'toggleFollowLeader', {
     name: "Toggle Follow-the-Leader Mode",
-    hint: "Enable/disable follow-the-leader movement for selected tokens.",
+    hint: "Enable/disable follow-the-leader mode for selected tokens",
     editable: [{ key: "KeyL", modifiers: ["Control"] }],
     onDown: () => {
       toggleFollowLeaderMode();
       return true;
-    }
+    },
+    restricted: false,
+    precedence: CONST.KEYBINDING_PRECEDENCE.NORMAL
   });
-
-  // --- CHECK FOR LIBWRAPPER DEPENDENCY ---
-  console.log('Party Vision | Checking for libWrapper...');
-  const libWrapperModule = game.modules.get('lib-wrapper');
-  console.log('Party Vision | libWrapper module object:', libWrapperModule);
-  console.log('Party Vision | libWrapper active?:', libWrapperModule?.active);
   
-  // Check if libWrapper API is available (more reliable than checking active flag)
-  const hasLibWrapper = typeof libWrapper !== 'undefined';
-  console.log('Party Vision | libWrapper API available?:', hasLibWrapper);
-  
-  if (!hasLibWrapper) {
-    console.error('Party Vision | libWrapper API not found!');
-    ui.notifications.error("Party Vision requires 'libWrapper' module to be active!");
-    console.error('Party Vision | Make sure libWrapper is:');
-    console.error('  1. Installed');
-    console.error('  2. Activated in module settings'); 
-    console.error('  3. Loaded BEFORE Party Vision');
-    console.error('Party Vision | Settings have been registered, but hooks will not work without libWrapper');
-    return;
-  }
-  
-  console.log('Party Vision | libWrapper detected, registering hooks...');
-
-  // --- REGISTER VISION HOOK (FIX: Use v13 method name initializeVisionSource) ---
-  
-  libWrapper.register('party-vision', 'Token.prototype.initializeVisionSource', function(wrapped, ...args) {
-    const partyToken = this;
-    const memberData = partyToken.document.getFlag("party-vision", "memberData");
-    
-    if (!memberData) return wrapped(...args);
-    
-    const userActor = game.user.character;
-    const isMember = memberData.some(m => m.actorId === userActor?.id);
-    
-    if (!userActor || !isMember) return wrapped(...args);
-    
-    const actorVision = userActor.prototypeToken;
-    
-    // Store original vision data
-    const originalData = {
-      visionMode: partyToken.document.visionMode,
-      dimSight: partyToken.document.dimSight,
-      brightSight: partyToken.document.brightSight,
-      sightAngle: partyToken.document.sightAngle,
-      visionAttenuation: partyToken.document.visionAttenuation,
-      detectionModes: partyToken.document.detectionModes
-    };
-    
-    // Apply user's character vision
-    partyToken.document.visionMode = actorVision.visionMode;
-    partyToken.document.dimSight = actorVision.dimSight;
-    partyToken.document.brightSight = actorVision.brightSight;
-    partyToken.document.sightAngle = actorVision.sightAngle;
-    partyToken.document.visionAttenuation = actorVision.visionAttenuation;
-    partyToken.document.detectionModes = actorVision.detectionModes; // FIX: from prototypeToken
-    
-    const result = wrapped(...args);
-    
-    // Restore original data
-    partyToken.document.visionMode = originalData.visionMode;
-    partyToken.document.dimSight = originalData.dimSight;
-    partyToken.document.brightSight = originalData.brightSight;
-    partyToken.document.sightAngle = originalData.sightAngle;
-    partyToken.document.visionAttenuation = originalData.visionAttenuation;
-    partyToken.document.detectionModes = originalData.detectionModes;
-    
-    return result;
-  }, 'WRAPPER');
-  
-  // NOTE: Token.prototype._onDoubleLeft was removed in Foundry v13
-  // Double-click functionality removed for now - players can still right-click → Open Actor Sheet
-  
-  console.log('Party Vision | Init hook completed successfully');
-  console.log('Party Vision | Settings registered: 6');
-  console.log('Party Vision | Keybindings registered: 1');
-  console.log('Party Vision | libWrapper hooks registered: 1');
-});
-
-// ==============================================
-// READY HOOK - Post-initialization setup
-// ==============================================
-
-Hooks.once('ready', async () => {
-  console.log('Party Vision | Module Ready');
-  
-  // Verify that init hook completed successfully by checking if settings were registered
-  if (!game.settings.settings.has('party-vision.showHudButtons')) {
-    console.error('Party Vision | Settings not registered!');
-    console.error('Party Vision | This means the init hook failed. Common causes:');
-    console.error('  1. libWrapper module not loaded before Party Vision');
-    console.error('  2. Init hook error that prevented settings registration');
-    console.error('  3. Module load order issue');
-    console.error('Party Vision | Check console for errors during init phase');
-    ui.notifications.error('Party Vision: Initialization failed - check console for details');
-    return;
-  }
-  
-  console.log('Party Vision | Settings verified successfully');
-  
-  // Validate compendium on load
-  try {
-    const pack = game.packs.get("party-vision.macros");
-    if (pack) {
-      console.log('Party Vision | Compendium found:', pack.metadata.label);
-      
-      // Try to load documents - may have cached duplicates from Forge
-      const docs = await pack.getDocuments();
-      console.log(`Party Vision | Compendium loaded: ${docs.length} macro(s)`);
-      
-      // Validate we have the expected macros
-      const expectedMacros = ['Form Party', 'Deploy Party'];
-      const foundMacros = docs.map(d => d.name);
-      const hasAllExpected = expectedMacros.every(name => foundMacros.includes(name));
-      
-      if (hasAllExpected) {
-        console.log('Party Vision | Core macros verified: Form Party, Deploy Party');
-      } else {
-        console.warn('Party Vision | Expected macros not found:', expectedMacros);
-        console.warn('Party Vision | Found macros:', foundMacros);
-      }
-      
-      // Check for duplicates (Forge caching issue)
-      if (docs.length > 2) {
-        console.warn('Party Vision | Detected extra macros in compendium (likely Forge cache)');
-        console.warn('Party Vision | Expected: 2 macros, Found:', docs.length);
-        console.warn('Party Vision | This is cosmetic - functionality not affected');
-        console.warn('Party Vision | To fix: Uninstall module → Clear browser cache → Reinstall');
-      }
-    } else {
-      console.warn('Party Vision | Compendium not found: party-vision.macros');
-    }
-  } catch (e) {
-    // Suppress Foundry's "Error detected in module" warning for compendium issues
-    console.warn('Party Vision | Compendium load warning (likely cached duplicates):', e.message);
-    console.warn('Party Vision | This is a known Forge caching issue and does not affect functionality');
-  }
-  
-  // Register hooks after settings are ready
-  console.log('Party Vision | Registering visual indicators...');
-  setupVisualIndicators();
-  console.log('Party Vision | Registering Token HUD integration...');
-  setupTokenHUD();
   console.log('Party Vision | Initialization complete');
 });
 
 // ==============================================
-// CANVAS READY HOOK - Refresh vision for existing party tokens
+// READY HOOK - POST-INITIALIZATION SETUP
 // ==============================================
 
-Hooks.on('canvasReady', () => {
-  // This hook ensures that party token vision is refreshed when:
-  // 1. A player logs in and the canvas loads
-  // 2. The scene changes
-  // 3. The canvas is re-rendered
+Hooks.once('ready', () => {
+  console.log('Party Vision | Ready hook fired');
   
-  // Only refresh if the user has a character assigned
-  if (!game.user.character) {
-    console.log('Party Vision | Canvas ready but no character assigned to user');
+  if (!game.user) {
+    console.warn('Party Vision | No game.user available');
     return;
   }
   
-  console.log('Party Vision | Canvas ready - refreshing vision for party tokens');
+  console.log('Party Vision | User:', game.user.name, '| Role:', game.user.role);
   
-  // Find all party tokens on the current scene
-  const partyTokens = canvas.tokens.placeables.filter(token => {
-    const memberData = token.document.getFlag('party-vision', 'memberData');
-    return memberData && memberData.length > 0;
-  });
-  
-  if (partyTokens.length === 0) {
-    console.log('Party Vision | No party tokens found on scene');
-    return;
-  }
-  
-  console.log(`Party Vision | Found ${partyTokens.length} party token(s), checking if user is a member`);
-  
-  // Refresh vision sources for party tokens that include this user's character
-  for (const partyToken of partyTokens) {
-    const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-    const userActorId = game.user.character.id;
-    const isMember = memberData.some(m => m.actorId === userActorId);
-    
-    if (isMember) {
-      console.log(`Party Vision | User's character is in party token "${partyToken.name}" - refreshing vision`);
-      
-      // Force re-initialization of vision source
-      // This will trigger our libWrapper hook with the correct user character
-      partyToken.initializeVisionSource({ deleted: false });
-    }
-  }
-});
-
-// ==============================================
-// TOKEN HUD SETUP
-// ==============================================
-
-function setupTokenHUD() {
+  // Set up token HUD buttons
   Hooks.on('renderTokenHUD', (app, html, data) => {
     // Safety check: ensure settings are registered before accessing
     try {
@@ -424,28 +253,12 @@ function setupTokenHUD() {
         </div>
       `);
       formButton.on('click', async () => {
-        // Try to find macro in compendium first, otherwise try user macros
-        let macro = null;
-        try {
-          const pack = game.packs.get("party-vision.macros");
-          if (pack) {
-            const docs = await pack.getDocuments();
-            macro = docs.find(m => m.name === "Form Party");
-          }
-        } catch (e) {
-          console.warn("Party Vision: Error loading compendium", e);
-        }
-        
-        // Fallback: check user macros
-        if (!macro) {
-          macro = game.macros.find(m => m.name === "Form Party");
-        }
-        
-        if (macro) {
-          macro.execute();
+        // Call function directly (no macro dependency)
+        if (window.PartyVision && window.PartyVision.showFormPartyDialog) {
+          window.PartyVision.showFormPartyDialog();
         } else {
-          ui.notifications.warn("Form Party macro not found. Please create it manually or run the form party code directly.");
-          console.warn("Party Vision: Form Party macro not found in compendium or user macros");
+          ui.notifications.error("Party Vision: Form Party function not available. Module may not be fully loaded.");
+          console.error("Party Vision: showFormPartyDialog not found on window.PartyVision");
         }
         app.clear();
       });
@@ -462,28 +275,13 @@ function setupTokenHUD() {
         </div>
       `);
       deployButton.on('click', async () => {
-        // Try to find macro in compendium first, otherwise try user macros
-        let macro = null;
-        try {
-          const pack = game.packs.get("party-vision.macros");
-          if (pack) {
-            const docs = await pack.getDocuments();
-            macro = docs.find(m => m.name === "Deploy Party");
-          }
-        } catch (e) {
-          console.warn("Party Vision: Error loading compendium", e);
-        }
-        
-        // Fallback: check user macros
-        if (!macro) {
-          macro = game.macros.find(m => m.name === "Deploy Party");
-        }
-        
-        if (macro) {
-          macro.execute();
+        // Call function directly (no macro dependency)
+        const partyToken = controlled[0];
+        if (window.PartyVision && window.PartyVision.showDeployDialog) {
+          await window.PartyVision.showDeployDialog(partyToken);
         } else {
-          ui.notifications.warn("Deploy Party macro not found. Please create it manually or run the deploy party code directly.");
-          console.warn("Party Vision: Deploy Party macro not found in compendium or user macros");
+          ui.notifications.error("Party Vision: Deploy Party function not available. Module may not be fully loaded.");
+          console.error("Party Vision: showDeployDialog not found on window.PartyVision");
         }
         app.clear();
       });
@@ -533,1319 +331,525 @@ function setupTokenHUD() {
               }
             });
           }
-        }, 100); // Small delay to ensure HUD is fully rendered
-      }
-    }
-    
-    // === COMBAT TOGGLE FOR PARTY TOKENS ===
-    // Add functionality to combat toggle button for party tokens
-    if (token && controlled.length === 1) {
-      const memberData = token.document.getFlag('party-vision', 'memberData');
-      
-      if (memberData && memberData.length > 0) {
-        // Find the combat toggle button
-        const $combatToggle = $html.find('[data-action="combat"]');
-        if ($combatToggle.length > 0) {
-          // Remove existing handlers and add our custom one
-          $combatToggle.off('click').on('click', async (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            // Check if we're in combat
-            if (!game.combat) {
-              ui.notifications.warn("No active combat encounter");
-              return;
-            }
-            
-            // Get all member actors
-            const memberActors = [];
-            for (const member of memberData) {
-              const actor = game.actors.get(member.actorId);
-              if (actor) {
-                memberActors.push(actor);
-              }
-            }
-            
-            if (memberActors.length === 0) {
-              ui.notifications.warn("No valid party members found");
-              return;
-            }
-            
-            // Check if any members are already in combat
-            const combatants = game.combat.combatants.filter(c => 
-              memberActors.some(actor => actor.id === c.actorId)
-            );
-            
-            if (combatants.length > 0) {
-              ui.notifications.info(`Party members already in combat (${combatants.length}/${memberActors.length})`);
-              return;
-            }
-            
-            // Add all party members to combat
-            const createData = [];
-            for (const actor of memberActors) {
-              // Find the actor's token on the scene (if deployed)
-              const sceneToken = canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
-              
-              // In v13, omit tokenId if undefined - Foundry will handle it
-              const combatantData = {
-                actorId: actor.id,
-                sceneId: canvas.scene.id,
-                hidden: false
-              };
-              
-              // Only add tokenId if we found a token on the scene
-              if (sceneToken?.id) {
-                combatantData.tokenId = sceneToken.id;
-              }
-              
-              createData.push(combatantData);
-            }
-            
-            try {
-              const created = await game.combat.createEmbeddedDocuments("Combatant", createData);
-              ui.notifications.info(`Added ${created.length} party member(s) to combat`);
-              console.log(`Party Vision | Added ${created.length} combatants to combat`);
-            } catch (error) {
-              console.error('Party Vision | Error adding party to combat:', error);
-              ui.notifications.error("Failed to add party members to combat - " + error.message);
-            }
-            
-            // Close the HUD
-            app.clear();
-          });
-        }
+        }, 50);
       }
     }
   });
-}
+});
 
 // ==============================================
-// VISUAL INDICATORS SETUP
+// CANVAS READY HOOK - VISUAL INDICATORS
 // ==============================================
 
-function setupVisualIndicators() {
+Hooks.on('canvasReady', () => {
+  console.log('Party Vision | Canvas ready, setting up visual indicators');
+  
+  // Draw visual indicators for all party tokens
   Hooks.on('refreshToken', (token) => {
     const memberData = token.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return;
+    if (!memberData || memberData.length === 0) return;
     
-    // Safety check: ensure settings are registered before accessing
-    try {
-      if (!game.settings.settings.has('party-vision.showMemberPortraits')) {
-        return;
-      }
-    } catch (e) {
-      return;
-    }
-    
-    // Remove existing overlays
-    token.children.forEach(child => {
-      if (child.name === 'party-vision-overlay') {
-        child.destroy();
-      }
-    });
-    
-    if (game.settings.get('party-vision', 'showMemberPortraits')) {
-      renderMemberPortraits(token, memberData);
-    }
-    
-    if (game.settings.get('party-vision', 'showRangeIndicator')) {
-      renderRangeIndicator(token, memberData);
-    }
+    drawPartyIndicators(token, memberData);
   });
-}
-
-// ==============================================
-// CONTEXT MENU FOR PARTY TOKENS
-// ==============================================
-
-Hooks.on('getTokenContextOptions', (html, contextOptions) => {
-  const token = canvas.tokens.get(html.data('token-id'));
-  if (!token) return;
   
-  const memberData = token.document.getFlag('party-vision', 'memberData');
-  
-  // Add options for party tokens
-  if (memberData && (game.user.isGM || game.settings.get('party-vision', 'allowPlayerActions'))) {
-    
-    contextOptions.push({
-      name: "Scout Ahead",
-      icon: '<i class="fas fa-running"></i>',
-      condition: () => memberData && memberData.length > 0,
-      callback: () => scoutAheadDialog(token)
+  // Initial draw for existing party tokens
+  if (canvas.tokens) {
+    canvas.tokens.placeables.forEach(token => {
+      const memberData = token.document.getFlag('party-vision', 'memberData');
+      if (memberData && memberData.length > 0) {
+        drawPartyIndicators(token, memberData);
+      }
     });
-    
-    contextOptions.push({
-      name: "Remove Member",
-      icon: '<i class="fas fa-user-minus"></i>',
-      condition: () => memberData && memberData.length > 1,
-      callback: () => removeMemberDialog(token)
-    });
-    
-    contextOptions.push({
-      name: "Split Party",
-      icon: '<i class="fas fa-users-cog"></i>',
-      condition: () => memberData && memberData.length > 1,
-      callback: () => showSplitPartyDialog(token)
-    });
-  }
-  
-  // Add "Add to Party" for regular tokens near party tokens
-  if (!memberData) {
-    const nearbyPartyToken = canvas.tokens.placeables.find(t => {
-      const dist = Math.hypot(t.x - token.x, t.y - token.y);
-      return t.document.getFlag('party-vision', 'memberData') && dist < canvas.grid.size * NEARBY_DISTANCE_MULTIPLIER;
-    });
-    
-    if (nearbyPartyToken) {
-      contextOptions.push({
-        name: "Add to Nearby Party",
-        icon: '<i class="fas fa-user-plus"></i>',
-        condition: () => token.actor,
-        callback: () => addToParty(token, nearbyPartyToken)
-      });
-    }
   }
 });
 
 // ==============================================
-// VISUAL INDICATORS - Member Portraits & Range Indicator
+// VISUAL INDICATORS
 // ==============================================
 
-function renderMemberPortraits(token, memberData) {
-  const container = new PIXI.Container();
-  container.name = 'party-vision-overlay';
+/**
+ * Draw visual indicators for a party token (portraits and range circle)
+ * @param {Token} token - The party token
+ * @param {Array} memberData - Array of member data
+ */
+function drawPartyIndicators(token, memberData) {
+  if (!token || !memberData) return;
   
-  const members = memberData.slice(0, MAX_PORTRAITS); // Max portraits
+  // Clear existing indicators
+  if (token.partyVisionIndicators) {
+    token.partyVisionIndicators.forEach(indicator => indicator.destroy());
+  }
+  token.partyVisionIndicators = [];
   
-  members.forEach((member, index) => {
-    const actor = game.actors.get(member.actorId);
-    if (!actor) return;
-    
-    // Evenly space portraits around the token perimeter
-    // Start from top (12 o'clock) and go clockwise
-    const angle = (index / members.length) * Math.PI * 2 - Math.PI / 2; // Start at top
-    const radius = Math.max(token.w, token.h) * 0.65; // Position just outside token edge
-    const x = Math.cos(angle) * radius;
-    const y = Math.sin(angle) * radius;
-    
-    const sprite = PIXI.Sprite.from(actor.img);
-    sprite.width = PORTRAIT_SIZE;
-    sprite.height = PORTRAIT_SIZE;
-    sprite.anchor.set(0.5);
-    sprite.x = token.w / 2 + x;
-    sprite.y = token.h / 2 + y;
-    
-    // Add circular mask
-    const mask = new PIXI.Graphics();
-    mask.beginFill(0xFFFFFF);
-    mask.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2);
-    mask.endFill();
-    container.addChild(mask);
-    sprite.mask = mask;
-    
-    // Add border with slight glow effect
-    const border = new PIXI.Graphics();
-    border.lineStyle(2, 0xFFFFFF, 0.9);
-    border.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2);
-    border.lineStyle(1, 0x00AAFF, 0.5);
-    border.drawCircle(sprite.x, sprite.y, PORTRAIT_SIZE / 2 + 1);
-    
-    container.addChild(sprite);
-    container.addChild(border);
-  });
+  const showPortraits = game.settings.get('party-vision', 'showMemberPortraits');
+  const showRange = game.settings.get('party-vision', 'showRangeIndicator');
   
-  token.addChild(container);
-}
-
-function renderRangeIndicator(token, memberData) {
-  const container = token.children.find(c => c.name === 'party-vision-overlay') 
-    || new PIXI.Container();
-  
-  if (!token.children.includes(container)) {
-    container.name = 'party-vision-overlay';
-    token.addChild(container);
+  // Draw member portraits
+  if (showPortraits && memberData.length > 0) {
+    const portraits = drawMemberPortraits(token, memberData);
+    token.partyVisionIndicators.push(...portraits);
   }
   
-  // Calculate max spread from member data
-  let maxDist = 0;
+  // Draw range indicator
+  if (showRange) {
+    const rangeIndicator = drawRangeIndicator(token, memberData);
+    if (rangeIndicator) {
+      token.partyVisionIndicators.push(rangeIndicator);
+    }
+  }
+}
+
+/**
+ * Draw member portrait icons around the party token
+ * @param {Token} token - The party token
+ * @param {Array} memberData - Array of member data
+ * @returns {Array} Array of PIXI graphics objects
+ */
+function drawMemberPortraits(token, memberData) {
+  const portraits = [];
+  const numMembers = Math.min(memberData.length, MAX_PORTRAITS);
+  
+  for (let i = 0; i < numMembers; i++) {
+    const member = memberData[i];
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+    
+    const portrait = new PIXI.Sprite(PIXI.Texture.from(actor.img));
+    portrait.width = PORTRAIT_SIZE;
+    portrait.height = PORTRAIT_SIZE;
+    portrait.anchor.set(0.5);
+    
+    // Position portraits in a circle around the token
+    const angle = (i / numMembers) * Math.PI * 2;
+    const radius = token.w * 0.6;
+    portrait.position.set(
+      token.center.x + Math.cos(angle) * radius,
+      token.center.y + Math.sin(angle) * radius
+    );
+    
+    // Add border for leader
+    if (member.isLeader) {
+      const border = new PIXI.Graphics();
+      border.lineStyle(3, 0x00ff88, 1);
+      border.drawCircle(0, 0, PORTRAIT_SIZE / 2 + 2);
+      border.position.set(portrait.position.x, portrait.position.y);
+      canvas.tokens.addChild(border);
+      portraits.push(border);
+    }
+    
+    canvas.tokens.addChild(portrait);
+    portraits.push(portrait);
+  }
+  
+  return portraits;
+}
+
+/**
+ * Draw range indicator circle showing party spread
+ * @param {Token} token - The party token
+ * @param {Array} memberData - Array of member data
+ * @returns {PIXI.Graphics} Range indicator graphic
+ */
+function drawRangeIndicator(token, memberData) {
+  // Calculate max distance from center
+  let maxDistance = 0;
   memberData.forEach(member => {
-    const dist = Math.sqrt(member.dx ** 2 + member.dy ** 2);
-    if (dist > maxDist) maxDist = dist;
+    const distance = Math.sqrt(member.dx * member.dx + member.dy * member.dy);
+    maxDistance = Math.max(maxDistance, distance);
   });
   
-  const radiusInPixels = (maxDist + 2) * canvas.grid.size;
+  if (maxDistance === 0) return null;
+  
+  const gridSize = canvas.grid.size;
+  const radiusPixels = maxDistance * gridSize * 1.2; // 20% buffer
   
   const circle = new PIXI.Graphics();
-  circle.lineStyle(2, 0x4444FF, 0.3);
-  circle.drawCircle(token.w / 2, token.h / 2, radiusInPixels);
+  circle.lineStyle(2, 0x00ff88, 0.5);
+  circle.drawCircle(token.center.x, token.center.y, radiusPixels);
   
-  container.addChild(circle);
+  canvas.tokens.addChild(circle);
+  return circle;
 }
 
 // ==============================================
-// COMBAT INTEGRATION - Auto-Deploy and Auto-Form
+// FORM PARTY SYSTEM
 // ==============================================
 
-// Auto-deploy when adding party tokens to combat
-Hooks.on('createCombatant', async (combatant, options, userId) => {
-  // Only trigger for the GM
-  if (!game.user.isGM) return;
-  if (!game.settings.get('party-vision', 'autoDeployOnCombat')) return;
-  
-  // Get the token from the combatant
-  const tokenDoc = combatant.token;
-  if (!tokenDoc) return;
-  
-  // Check if this is a party token
-  const memberData = tokenDoc.getFlag('party-vision', 'memberData');
-  if (!memberData || memberData.length === 0) return;
-  
-  // Get the token object
-  const partyToken = canvas.tokens.get(tokenDoc.id);
-  if (!partyToken) return;
-  
-  console.log('Party Vision | Party token added to combat - showing deploy dialog');
-  ui.notifications.info(`Added party to combat`);
-  
-  // Show deploy dialog for this party token
-  await showDeployDialog(partyToken);
-});
-
-// Auto-deploy on combat start (legacy support for manual combat start)
-Hooks.on('updateCombat', async (combat, updateData, options, userId) => {
-  // Only trigger for the GM
-  if (!game.user.isGM) return;
-  
-  // Check if combat is ending
-  const isEnding = combat.round > 0 && updateData.active === false;
-  
-  if (isEnding && game.settings.get('party-vision', 'autoFormOnCombatEnd')) {
-    console.log('Party Vision | Combat ending - auto-forming party');
-    
-    // Wait a moment for combat to fully end
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Find all tokens that could be party members (player-owned tokens)
-    const playerTokens = canvas.tokens.placeables.filter(t => {
-      if (!t.actor) return false;
-      if (t.document.getFlag('party-vision', 'memberData')) return false; // Skip existing party tokens
-      
-      // Check if any player owns this actor
-      const owners = Object.entries(t.actor.ownership || {})
-        .filter(([userId, level]) => level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER)
-        .map(([userId]) => userId);
-      
-      return owners.some(userId => {
-        const user = game.users.get(userId);
-        return user && !user.isGM;
-      });
-    });
-    
-    if (playerTokens.length > 0) {
-      ui.notifications.info(`Auto-forming party from ${playerTokens.length} tokens...`);
-      
-      // Select the tokens programmatically
-      canvas.tokens.releaseAll();
-      playerTokens.forEach(t => t.control({ releaseOthers: false }));
-      
-      // Call the Form Party function
-      const formPartyMacro = (await game.packs.get("party-vision.macros").getDocuments())
-        .find(m => m.name === "Form Party");
-      
-      if (formPartyMacro) {
-        await formPartyMacro.execute();
-      }
-    }
-  }
-});
-
-// ==============================================
-// FOLLOW-THE-LEADER MODE
-// ==============================================
-
-// ==============================================
-// MEMBER MANAGEMENT FUNCTIONS
-// ==============================================
-
-async function scoutAheadDialog(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  const options = memberData.map(m => {
-    const actor = game.actors.get(m.actorId);
-    return `<option value="${m.actorId}">${actor?.name || 'Unknown'}</option>`;
-  }).join('');
-  
-  new Dialog({
-    title: "Scout Ahead",
-    content: `
-      <p>Choose a character to scout ahead:</p>
-      <select id="scout-select" style="width: 100%;">
-        ${options}
-      </select>
-    `,
-    buttons: {
-      scout: {
-        label: "Scout",
-        callback: async (html) => {
-          const actorId = html.find('#scout-select').val();
-          await scoutAhead(partyToken, actorId);
-        }
-      },
-      cancel: { label: "Cancel" }
-    },
-    default: "scout"
-  }).render(true);
-}
-
-async function scoutAhead(partyToken, actorId) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  const member = memberData.find(m => m.actorId === actorId);
-  
-  if (!member) return;
-  
-  const actor = game.actors.get(actorId);
-  const tokenData = actor.prototypeToken.toObject();
-  
-  // Spawn token at party location
-  const newTokenData = foundry.utils.mergeObject(tokenData, {
-    x: partyToken.x,
-    y: partyToken.y,
-    actorId: actor.id,  // Explicitly set actor ID
-    actorLink: actor.prototypeToken.actorLink  // Preserve actor link setting
-  });
-  
-  await canvas.scene.createEmbeddedDocuments("Token", [newTokenData]);
-  ui.notifications.info(`${actor.name} scouts ahead!`);
-}
-
-async function removeMemberDialog(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  const options = memberData.map(m => {
-    const actor = game.actors.get(m.actorId);
-    return `<option value="${m.actorId}">${actor?.name || 'Unknown'}</option>`;
-  }).join('');
-  
-  new Dialog({
-    title: "Remove Member from Party",
-    content: `
-      <p>Choose a character to remove:</p>
-      <select id="remove-select" style="width: 100%;">
-        ${options}
-      </select>
-    `,
-    buttons: {
-      remove: {
-        label: "Remove",
-        callback: async (html) => {
-          const actorId = html.find('#remove-select').val();
-          await removeMember(partyToken, actorId);
-        }
-      },
-      cancel: { label: "Cancel" }
-    },
-    default: "remove"
-  }).render(true);
-}
-
-async function removeMember(partyToken, actorId) {
-  let memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  memberData = memberData.filter(m => m.actorId !== actorId);
-  
-  if (memberData.length === 0) {
-    ui.notifications.warn("Cannot remove last member. Use Deploy Party instead.");
-    return;
-  }
-  
-  await partyToken.document.setFlag('party-vision', 'memberData', memberData);
-  ui.notifications.info("Member removed from party.");
-  partyToken.refresh();
-}
-
-// ==============================================
-// DEPRECATED FUNCTIONS REMOVED IN v2.4.2
-// ==============================================
-// The following functions were removed as they have been replaced by better implementations:
-// - splitPartyDialog() -> replaced by showSplitPartyDialog() (line ~2179)
-// - splitParty() -> replaced by splitAndDeployMembers() (line ~2344)
-// These new functions provide better UX with styled dialogs, member images, and more options.
-
-async function addToParty(token, partyToken) {
-  if (!token.actor) {
-    ui.notifications.warn("Token has no linked actor.");
-    return;
-  }
-  
-  let memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  // Check if already in party
-  if (memberData.some(m => m.actorId === token.actor.id)) {
-    ui.notifications.warn("Character is already in the party.");
-    return;
-  }
-  
-  // Calculate relative position
-  const gridSize = canvas.grid.size;
-  const deltaX = token.center.x - partyToken.center.x;
-  const deltaY = token.center.y - partyToken.center.y;
-  const gridX = Math.round(deltaX / gridSize);
-  const gridY = Math.round(deltaY / gridSize);
-  
-  memberData.push({
-    actorId: token.actor.id,
-    dx: gridX,
-    dy: gridY
-  });
-  
-  await partyToken.document.setFlag('party-vision', 'memberData', memberData);
-  await canvas.scene.deleteEmbeddedDocuments("Token", [token.id]);
-  
-  ui.notifications.info(`${token.actor.name} joined the party!`);
-  partyToken.refresh();
-}
-
-// ==============================================
-// FOLLOW-THE-LEADER MODE
-// ==============================================
-
-function toggleFollowLeaderMode() {
+/**
+ * Show the Form Party dialog for selected tokens
+ */
+async function showFormPartyDialog() {
   const controlled = canvas.tokens.controlled;
   
   if (controlled.length < 2) {
-    ui.notifications.warn("Select at least 2 tokens to enable Follow-the-Leader mode.");
+    ui.notifications.warn("Select at least 2 tokens to form a party.");
     return;
   }
   
-  followLeaderMode = !followLeaderMode;
+  // Filter tokens - must have linked actors
+  const validTokens = controlled.filter(t => {
+    const actor = t.actor;
+    if (!actor) {
+      console.warn(`Party Vision | Token ${t.name} has no linked actor, skipping`);
+      return false;
+    }
+    return true;
+  });
   
-  if (followLeaderMode) {
-    leaderToken = controlled[0];
-    followerOffsets.clear();
+  if (validTokens.length < 2) {
+    ui.notifications.warn("Selected tokens must have linked actors to form a party.");
+    return;
+  }
+  
+  // Build member list HTML
+  const memberListHTML = validTokens.map((token, index) => {
+    const actor = token.actor;
+    return `
+      <div class="party-member" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
+        <img src="${actor.img}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; border: 2px solid #555;">
+        <div style="flex: 1;">
+          <div style="font-weight: bold; color: #ddd;">${actor.name}</div>
+          <div style="font-size: 0.85em; color: #aaa;">
+            ${actor.system.attributes?.movement?.walk || actor.system.attributes?.speed?.value || 'Unknown'} movement
+          </div>
+        </div>
+        <input type="radio" name="leader" value="${index}" ${index === 0 ? 'checked' : ''} 
+               style="margin-left: 12px; transform: scale(1.2);" title="Set as leader">
+      </div>
+    `;
+  }).join('');
+  
+  // Formation presets dropdown
+  const formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
+    const preset = FORMATION_PRESETS[key];
+    return `<option value="${key}">${preset.name}</option>`;
+  }).join('');
+  
+  const lastPreset = game.settings.get('party-vision', 'lastFormationPreset');
+  
+  new Dialog({
+    title: "Form Party",
+    content: `
+      <style>
+        .form-party-dialog {
+          padding: 15px;
+          font-family: "Signika", sans-serif;
+        }
+        .form-party-dialog h3 {
+          margin: 0 0 12px 0;
+          color: #ddd;
+          font-size: 1.1em;
+          border-bottom: 2px solid #00ff88;
+          padding-bottom: 8px;
+        }
+        .form-party-dialog .section {
+          margin: 15px 0;
+        }
+        .form-party-dialog label {
+          display: block;
+          color: #ccc;
+          font-weight: bold;
+          margin-bottom: 8px;
+        }
+        .form-party-dialog select {
+          width: 100%;
+          padding: 8px;
+          background: rgba(0,0,0,0.4);
+          border: 1px solid #555;
+          color: #ddd;
+          border-radius: 4px;
+        }
+        .form-party-dialog .info-text {
+          font-size: 0.85em;
+          color: #aaa;
+          margin: 8px 0;
+          font-style: italic;
+        }
+      </style>
+      <div class="form-party-dialog">
+        <h3>Select Party Members</h3>
+        <div class="info-text">
+          <i class="fas fa-info-circle"></i> Select a leader by clicking the radio button. The party will orient around the leader.
+        </div>
+        <div class="section">
+          ${memberListHTML}
+        </div>
+        
+        <div class="section">
+          <label for="formation-preset">
+            <i class="fas fa-chess-board"></i> Formation Preset
+          </label>
+          <select id="formation-preset" name="formation">
+            ${formationOptions}
+          </select>
+          <div class="info-text">Choose how the party will be arranged when deployed.</div>
+        </div>
+      </div>
+    `,
+    buttons: {
+      form: {
+        label: '<i class="fas fa-users"></i> Form Party',
+        callback: async (html) => {
+          const leaderIndex = parseInt(html.find('input[name="leader"]:checked').val());
+          const formationKey = html.find('#formation-preset').val();
+          
+          // Save last used formation
+          await game.settings.set('party-vision', 'lastFormationPreset', formationKey);
+          
+          // Form the party
+          await formParty(validTokens, leaderIndex, formationKey);
+        }
+      },
+      cancel: {
+        label: '<i class="fas fa-times"></i> Cancel',
+        callback: () => {}
+      }
+    },
+    default: "form",
+    render: (html) => {
+      // Select last used formation
+      html.find('#formation-preset').val(lastPreset);
+    }
+  }, {
+    width: 500,
+    classes: ["dialog", "party-vision-dialog"]
+  }).render(true);
+}
+
+/**
+ * Form a party from selected tokens
+ * @param {Array<Token>} tokens - Tokens to form into party
+ * @param {number} leaderIndex - Index of the leader token
+ * @param {string} formationKey - Formation preset key
+ */
+async function formParty(tokens, leaderIndex, formationKey) {
+  if (tokens.length < 2) {
+    ui.notifications.warn("Need at least 2 tokens to form a party.");
+    return;
+  }
+  
+  const leaderToken = tokens[leaderIndex];
+  const leaderActor = leaderToken.actor;
+  
+  if (!leaderActor) {
+    ui.notifications.error("Leader token must have a linked actor.");
+    return;
+  }
+  
+  console.log(`Party Vision | Forming party with ${tokens.length} members, leader: ${leaderActor.name}`);
+  
+  // Apply formation preset if not 'current'
+  let positionedTokens = tokens;
+  if (formationKey !== 'current') {
+    const preset = FORMATION_PRESETS[formationKey];
+    if (preset && preset.positions) {
+      // Apply preset positions
+      positionedTokens = await applyFormationPreset(tokens, leaderIndex, preset);
+    }
+  }
+  
+  // Calculate member data with offsets from leader
+  const gridSize = canvas.grid.size;
+  const leaderGridX = leaderToken.x / gridSize;
+  const leaderGridY = leaderToken.y / gridSize;
+  
+  const memberData = [];
+  
+  for (let i = 0; i < positionedTokens.length; i++) {
+    const token = positionedTokens[i];
+    const actor = token.actor;
     
-    // Store relative positions
-    controlled.slice(1).forEach(follower => {
-      followerOffsets.set(follower.id, {
-        dx: follower.x - leaderToken.x,
-        dy: follower.y - leaderToken.y
-      });
-    });
-    
-    ui.notifications.info(`Follow-the-Leader mode enabled. ${leaderToken.name} is the leader.`);
-  } else {
-    leaderToken = null;
-    followerOffsets.clear();
-    ui.notifications.info("Follow-the-Leader mode disabled.");
-  }
-}
-
-Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
-  if (!followLeaderMode) return;
-  if (!leaderToken || tokenDoc.id !== leaderToken.id) return;
-  if (!('x' in change || 'y' in change)) return;
-  
-  // Move followers
-  const updates = [];
-  for (const [followerId, offset] of followerOffsets.entries()) {
-    updates.push({
-      _id: followerId,
-      x: leaderToken.x + offset.dx,
-      y: leaderToken.y + offset.dy
-    });
-  }
-  
-  if (updates.length > 0) {
-    await canvas.scene.updateEmbeddedDocuments("Token", updates);
-  }
-});
-
-// ==============================================
-// PARTY LIGHTING SYNCHRONIZATION
-// ==============================================
-
-/**
- * Watch for lighting changes on tokens and update party tokens accordingly
- */
-Hooks.on('updateToken', async (tokenDoc, change, options, userId) => {
-  // Only process if light properties changed
-  if (!change.light) return;
-  
-  // Skip if this IS a party token (prevent self-referential updates)
-  if (tokenDoc.getFlag('party-vision', 'memberData')) return;
-  
-  // Get the actor ID of the updated token
-  const actorId = tokenDoc.actorId;
-  if (!actorId) return;
-  
-  // Find all party tokens that contain this actor
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actorId);
-  });
-  
-  // Update lighting on each party token
-  for (const partyToken of partyTokens) {
-    await updatePartyLighting(partyToken);
-  }
-});
-
-/**
- * Watch for actor prototype token changes (e.g., when player updates their character's light in actor sheet)
- */
-Hooks.on('updateActor', async (actor, change, options, userId) => {
-  // CRITICAL FIX: In PF2e, lighting a torch doesn't always directly modify prototypeToken.light
-  // It might modify items, effects, or system data. So we need to check if this actor is in any party
-  // and update lighting regardless of what changed.
-  
-  // Quick check: is this actor in any party?
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  // If actor isn't in any party, no need to update
-  if (partyTokens.length === 0) return;
-  
-  console.log(`Party Vision | Actor ${actor.name} updated (in ${partyTokens.length} party token(s)), checking lighting...`);
-  
-  // Update lighting on each party token
-  // The updatePartyLightingFromActors function will read the current light state
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-});
-
-/**
- * Watch for Active Effects (like spell effects) that modify lighting
- * This catches PF2e Light spell and similar effects
- */
-Hooks.on('createActiveEffect', async (effect, options, userId) => {
-  await handleActiveEffectChange(effect);
-});
-
-Hooks.on('updateActiveEffect', async (effect, change, options, userId) => {
-  await handleActiveEffectChange(effect);
-});
-
-Hooks.on('deleteActiveEffect', async (effect, options, userId) => {
-  await handleActiveEffectChange(effect);
-});
-
-/**
- * Watch for item updates (equipped items like torches)
- * This catches when players equip/unequip light-emitting items
- */
-Hooks.on('updateItem', async (item, change, options, userId) => {
-  // Check if this is an item owned by an actor
-  const actor = item.parent;
-  if (!actor || actor.documentName !== 'Actor') return;
-  
-  // Quick check: is this actor in any party?
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  // If actor isn't in any party, no need to update
-  if (partyTokens.length === 0) return;
-  
-  console.log(`Party Vision | Item "${item.name}" updated on ${actor.name} (in party), checking lighting...`);
-  
-  // Update lighting on each party token
-  // The updatePartyLightingFromActors function will read the current light state
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-});
-
-/**
- * Watch for item creation (e.g., buying/finding a torch)
- */
-Hooks.on('createItem', async (item, options, userId) => {
-  const actor = item.parent;
-  if (!actor || actor.documentName !== 'Actor') return;
-  
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  if (partyTokens.length === 0) return;
-  
-  console.log(`Party Vision | Item "${item.name}" created on ${actor.name} (in party), checking lighting...`);
-  
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-});
-
-/**
- * Watch for item deletion (e.g., torch consumed/removed)
- */
-Hooks.on('deleteItem', async (item, options, userId) => {
-  const actor = item.parent;
-  if (!actor || actor.documentName !== 'Actor') return;
-  
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  if (partyTokens.length === 0) return;
-  
-  console.log(`Party Vision | Item "${item.name}" deleted from ${actor.name} (in party), checking lighting...`);
-  
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-});
-
-/**
- * Handle Active Effect changes that might affect lighting
- * @param {ActiveEffect} effect - The active effect that changed
- */
-async function handleActiveEffectChange(effect) {
-  // Get the actor this effect belongs to
-  const actor = effect.parent;
-  if (!actor || actor.documentName !== 'Actor') return;
-  
-  // Find all party tokens that contain this actor
-  const partyTokens = canvas.tokens.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    if (!memberData) return false;
-    return memberData.some(m => m.actorId === actor.id);
-  });
-  
-  if (partyTokens.length === 0) return;
-  
-  console.log(`Party Vision | Active Effect "${effect.name}" changed on ${actor.name}, updating ${partyTokens.length} party token(s)`);
-  
-  // Update lighting on each party token
-  // We update for ANY active effect change because effects might indirectly affect lighting
-  // (e.g., in PF2e, spell effects modify system data that affects computed token light)
-  for (const partyToken of partyTokens) {
-    debouncedUpdatePartyLighting(partyToken);
-  }
-}
-
-/**
- * Debounced version of updatePartyLightingFromActors
- * Prevents rapid-fire updates when multiple effects/items change
- * @param {Token} partyToken - The party token to update
- */
-function debouncedUpdatePartyLighting(partyToken) {
-  const tokenId = partyToken.id;
-  
-  // Clear any pending update for this token
-  if (pendingLightingUpdates.has(tokenId)) {
-    clearTimeout(pendingLightingUpdates.get(tokenId));
-  }
-  
-  // Schedule new update
-  const timeoutId = setTimeout(async () => {
-    pendingLightingUpdates.delete(tokenId);
-    await updatePartyLightingFromActors(partyToken);
-  }, LIGHTING_UPDATE_DEBOUNCE_MS);
-  
-  pendingLightingUpdates.set(tokenId, timeoutId);
-}
-
-/**
- * Aggregate lights from member ACTORS (not tokens) and apply to party token
- * Use this when members don't have active tokens on scene
- * @param {Token} partyToken - The party token to update
- */
-async function updatePartyLightingFromActors(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  if (!memberData) return;
-  
-  // CRITICAL: Allow time for game system to process item/effect changes naturally
-  // We do NOT call actor prepare methods - the system does this automatically
-  // 100ms is enough time for most systems to complete their update hooks
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  const lights = [];
-  
-  console.log(`Party Vision | ===== Checking lighting for ${memberData.length} party members =====`);
-  
-  // Collect light data from member actors
-  for (const member of memberData) {
-    const actor = game.actors.get(member.actorId);
     if (!actor) continue;
     
-    console.log(`Party Vision | --- Checking ${actor.name} ---`);
+    const tokenGridX = token.x / gridSize;
+    const tokenGridY = token.y / gridSize;
     
-    let effectiveLight = null;
+    // Calculate offset from leader in grid units
+    const dx = tokenGridX - leaderGridX;
+    const dy = tokenGridY - leaderGridY;
     
-    // NOTE: We do NOT call actor.reset() or any prepare methods here!
-    // The actor is already prepared by Foundry's normal flow when our hooks fire.
-    // Calling prepare methods on already-prepared PF2e actors causes frozen object errors.
-    
-    // STRATEGY 1: Check if this actor has any deployed tokens on the scene (not part of a party)
-    const deployedTokens = canvas.tokens.placeables.filter(t => 
-      t.actor?.id === actor.id && 
-      t.id !== partyToken.id &&
-      !t.document.getFlag('party-vision', 'memberData') // Not another party token
-    );
-    
-    if (deployedTokens.length > 0) {
-      // Use the first deployed token's light (they should all be the same)
-      const token = deployedTokens[0];
-      if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
-        effectiveLight = token.document.light;
-        console.log(`Party Vision | ${actor.name}: ✓ Strategy 1 (Deployed Token) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
-      } else {
-        console.log(`Party Vision | ${actor.name}: Strategy 1 (Deployed Token) - token exists but no light`);
-      }
-    } else {
-      console.log(`Party Vision | ${actor.name}: Strategy 1 (Deployed Token) - no deployed tokens found`);
-    }
-    
-    // STRATEGY 2: Try to get computed token data with effects applied
-    if (!effectiveLight) {
-      try {
-        // NOTE: We do NOT call any prepare methods (prepareData, prepareEmbeddedDocuments, etc.)
-        // The actor is already fully prepared when our hooks fire.
-        // Calling prepare methods on already-prepared PF2e actors causes frozen object errors:
-        // - "Cannot delete property 'speed'"
-        // - "Cannot add property label, object is not extensible"
-        // Just read the current actor state directly!
-        
-        // Try multiple methods to get effective token data
-        let tokenDoc = null;
-        
-        // Method A: getTokenDocument (most systems)
-        if (typeof actor.getTokenDocument === 'function') {
-          tokenDoc = await actor.getTokenDocument();
-        }
-        // Method B: Create synthetic token (PF2e and other systems)
-        else if (typeof actor.getTokenData === 'function') {
-          tokenDoc = actor.getTokenData();
-        }
-        // Method C: Direct prototype access after data prep (fallback)
-        else if (actor.prototypeToken) {
-          tokenDoc = actor.prototypeToken;
-        }
-        
-        // Log what we found
-        const hasLight = tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0);
-        console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) - bright=${tokenDoc?.light?.bright || 0}, dim=${tokenDoc?.light?.dim || 0}`);
-        
-        if (hasLight) {
-          effectiveLight = tokenDoc.light;
-          console.log(`Party Vision | ${actor.name}: ✓ Strategy 2 (Computed Token) found meaningful light`);
-        } else {
-          console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) - no meaningful light found`);
-        }
-      } catch (e) {
-        console.log(`Party Vision | ${actor.name}: Strategy 2 (Computed Token) failed - ${e.message}`);
-      }
-    }
-    
-    // STRATEGY 2.5: Manually apply active effects to prototype token
-    if (!effectiveLight) {
-      try {
-        const effects = actor.effects || [];
-        const effectCount = effects.size || effects.length || 0;
-        console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - checking ${effectCount} effects`);
-        
-        // Start with prototype token light
-        let computedLight = foundry.utils.deepClone(actor.prototypeToken?.light || {
-          bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
-          animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
-          contrast: 0, saturation: 0, shadows: 0
-        });
-        
-        // Apply all active effects that modify light
-        let hasEffectLight = false;
-        
-        for (const effect of effects) {
-          if (!effect.active) continue;
-          
-          for (const change of effect.changes || []) {
-            const key = change.key || '';
-            
-            // Check if this modifies prototypeToken.light OR ATL (Advanced Token Lighting) properties
-            if (key.includes('prototypeToken.light') || key.includes('ATL.light') || key.includes('light.')) {
-              const parts = key.split('.');
-              const lightProp = parts[parts.length - 1]; // e.g., 'bright', 'dim', 'color'
-              const value = change.value;
-              
-              console.log(`Party Vision | ${actor.name}: Effect "${effect.name}" modifies ${key} = ${value}`);
-              
-              // Parse value if it's a string (might be a formula or number string)
-              let parsedValue = value;
-              if (typeof value === 'string') {
-                // Try to parse as number
-                const num = Number(value);
-                if (!isNaN(num)) {
-                  parsedValue = num;
-                } else {
-                  // Skip formula strings - we can't evaluate them safely
-                  console.log(`Party Vision | ${actor.name}: Skipping formula/non-numeric value "${value}"`);
-                  continue; // Skip this change
-                }
-              }
-              
-              // Apply the change
-              if (lightProp && computedLight) {
-                computedLight[lightProp] = parsedValue;
-                hasEffectLight = true;
-                console.log(`Party Vision | ${actor.name}: Applied ${lightProp} = ${parsedValue}`);
-              }
-            }
-          }
-        }
-        
-        if (hasEffectLight && (computedLight.bright > 0 || computedLight.dim > 0)) {
-          effectiveLight = computedLight;
-          console.log(`Party Vision | ${actor.name}: ✓ Strategy 2.5 (Active Effects) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
-        } else if (hasEffectLight) {
-          console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - effects found but no meaningful light (bright=${computedLight.bright}, dim=${computedLight.dim})`);
-        } else {
-          console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) - no light-modifying effects`);
-        }
-      } catch (e) {
-        console.log(`Party Vision | ${actor.name}: Strategy 2.5 (Active Effects) failed - ${e.message}`);
-      }
-    }
-    
-    // STRATEGY 3: Check for system-specific light-emitting items (PF2e torches, etc.)
-    if (!effectiveLight) {
-      try {
-        const items = actor.items || [];
-        const itemCount = items.size || items.length || 0;
-        console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) - scanning ${itemCount} items`);
-        
-        for (const item of items) {
-          // Check multiple equipped/active states (different systems use different properties)
-          const equippedChecks = {
-            basic: item.system?.equipped,
-            value: item.system?.equipped?.value,
-            invested: item.system?.equipped?.invested,
-            handsHeld: item.system?.equipped?.handsHeld > 0,
-            worn: item.system?.equipped?.carryType === "worn",
-            held: item.system?.equipped?.carryType === "held"
-          };
-          
-          const activationChecks = {
-            activated: item.system?.activated,
-            active: item.system?.active,
-            quantity: (item.system?.quantity || item.system?.quantity?.value) > 0
-          };
-          
-          const isEquipped = Object.values(equippedChecks).some(v => v);
-          const isActivated = Object.values(activationChecks).some(v => v);
-          
-          // If item has light properties, log it even if not equipped/activated
-          if (item.system?.light) {
-            const itemLight = item.system.light;
-            const hasLight = (itemLight.bright > 0 || itemLight.dim > 0);
-            
-            console.log(`Party Vision | ${actor.name}: Item "${item.name}" - equipped=${isEquipped}, activated=${isActivated}, hasLight=${hasLight}, bright=${itemLight.bright || 0}, dim=${itemLight.dim || 0}`);
-            
-            // Use it if equipped/activated AND has meaningful light
-            if ((isEquipped || isActivated) && hasLight) {
-              effectiveLight = {
-                bright: itemLight.bright || 0,
-                dim: itemLight.dim || 0,
-                angle: itemLight.angle || 360,
-                color: itemLight.color || null,
-                alpha: itemLight.alpha || 0.5,
-                animation: itemLight.animation || {},
-                coloration: itemLight.coloration || 1,
-                luminosity: itemLight.luminosity || 0.5,
-                attenuation: itemLight.attenuation || 0.5,
-                contrast: itemLight.contrast || 0,
-                saturation: itemLight.saturation || 0,
-                shadows: itemLight.shadows || 0
-              };
-              console.log(`Party Vision | ${actor.name}: ✓ Strategy 3 (Item "${item.name}") found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
-              break; // Use first light-emitting item found
-            }
-          }
-        }
-        
-        if (!effectiveLight) {
-          console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) - no active light-emitting items`);
-        }
-      } catch (e) {
-        console.log(`Party Vision | ${actor.name}: Strategy 3 (Item Inspection) failed - ${e.message}`);
-      }
-    }
-    
-    // STRATEGY 4: Fall back to prototype token (base case)
-    if (!effectiveLight) {
-      const protoLight = actor.prototypeToken?.light;
-      if (protoLight && (protoLight.bright > 0 || protoLight.dim > 0)) {
-        effectiveLight = protoLight;
-        console.log(`Party Vision | ${actor.name}: ✓ Strategy 4 (Prototype Token) found light - bright=${effectiveLight.bright}, dim=${effectiveLight.dim}`);
-      } else {
-        console.log(`Party Vision | ${actor.name}: Strategy 4 (Prototype Token) - no meaningful light`);
-      }
-    }
-    
-    // Check if this actor has any meaningful light and add to collection
-    if (effectiveLight && (effectiveLight.bright > 0 || effectiveLight.dim > 0)) {
-      lights.push({
-        actorName: actor.name,
-        bright: effectiveLight.bright || 0,
-        dim: effectiveLight.dim || 0,
-        angle: effectiveLight.angle || 360,
-        color: effectiveLight.color,
-        alpha: effectiveLight.alpha || 0.5,
-        animation: effectiveLight.animation || {},
-        coloration: effectiveLight.coloration || 1,
-        luminosity: effectiveLight.luminosity || 0.5,
-        attenuation: effectiveLight.attenuation || 0.5,
-        contrast: effectiveLight.contrast || 0,
-        saturation: effectiveLight.saturation || 0,
-        shadows: effectiveLight.shadows || 0
-      });
-      console.log(`Party Vision | ${actor.name}: ✅ ADDED TO LIGHTS ARRAY (bright=${effectiveLight.bright}, dim=${effectiveLight.dim})`);
-    } else {
-      console.log(`Party Vision | ${actor.name}: ❌ NO LIGHT - not added to array`);
-    }
-  }
-  
-  console.log(`Party Vision | ===== LIGHT COLLECTION COMPLETE: Found ${lights.length} light source(s) =====`);
-  if (lights.length > 0) {
-    lights.forEach(l => console.log(`Party Vision |   - ${l.actorName}: bright=${l.bright}, dim=${l.dim}`));
-  }
-  
-  // Store available lights for cycling
-  const availableLights = lights.map(light => ({
-    actorId: memberData.find(m => game.actors.get(m.actorId)?.name === light.actorName)?.actorId,
-    actorName: light.actorName,
-    light: { ...light }
-  })).filter(l => l.actorId); // Remove any that couldn't be mapped
-  
-  await partyToken.document.setFlag('party-vision', 'availableLights', availableLights);
-  
-  // Check if we're in manual light selection mode
-  const activeLightIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') ?? -1;
-  
-  let lightToApply;
-  
-  if (activeLightIndex >= 0) {
-    // Manual selection mode is active
-    if (activeLightIndex < availableLights.length) {
-      // User has selected a specific light source
-      const selectedLight = availableLights[activeLightIndex];
-      
-      // Check if the selected light still exists and has light
-      if (selectedLight && (selectedLight.light.bright > 0 || selectedLight.light.dim > 0)) {
-        // Selected light is still valid, use it
-        lightToApply = selectedLight.light;
-        console.log(`Party Vision | Using manually selected light: ${selectedLight.actorName}`);
-      } else {
-        // Selected light has gone to 0 or disappeared - auto-switch to next
-        console.log(`Party Vision | Active light source (${selectedLight?.actorName}) extinguished, auto-switching...`);
-        
-        // Find next available light
-        let newIndex = activeLightIndex;
-        let foundLight = false;
-        
-        for (let i = 0; i < availableLights.length; i++) {
-          newIndex = (activeLightIndex + 1 + i) % availableLights.length;
-          const candidate = availableLights[newIndex];
-          if (candidate.light.bright > 0 || candidate.light.dim > 0) {
-            lightToApply = candidate.light;
-            await partyToken.document.setFlag('party-vision', 'activeLightIndex', newIndex);
-            console.log(`Party Vision | Auto-switched to ${candidate.actorName}'s light`);
-            foundLight = true;
-            break;
-          }
-        }
-        
-        // If no valid lights found, turn off lighting
-        if (!foundLight) {
-          lightToApply = {
-            bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
-            animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
-            contrast: 0, saturation: 0, shadows: 0
-          };
-          await partyToken.document.setFlag('party-vision', 'activeLightIndex', availableLights.length); // Point to "no light"
-          console.log(`Party Vision | All lights extinguished, party token is now dark`);
-        }
-      }
-    } else {
-      // activeLightIndex is pointing to "no light" (beyond array)
-      lightToApply = {
-        bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
-        animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
-        contrast: 0, saturation: 0, shadows: 0
-      };
-      console.log(`Party Vision | Manual selection: No light (user preference)`);
-    }
-  } else {
-    // Auto mode (default) - use brightest
-    lightToApply = aggregateLights(lights);
-  }
-  
-  // Update party token lighting with error handling
-  try {
-    await partyToken.document.update({ light: lightToApply });
-    
-    if (lightToApply.bright > 0 || lightToApply.dim > 0) {
-      console.log(`Party Vision | ✅ Party token lighting updated: bright=${lightToApply.bright}, dim=${lightToApply.dim}`);
-    } else {
-      console.log(`Party Vision | ✅ Party token lighting cleared (no light sources)`);
-    }
-  } catch (error) {
-    console.error(`Party Vision | ❌ Failed to update party token lighting:`, error);
-    ui.notifications.warn("Party Vision: Failed to update party token lighting. See console for details.");
-  }
-}
-
-/**
- * Aggregate lights from all member tokens and apply to party token
- * @param {Token} partyToken - The party token to update
- */
-async function updatePartyLighting(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  if (!memberData) return;
-  
-  const lights = [];
-  
-  // Collect light data from all members
-  for (const member of memberData) {
-    const actor = game.actors.get(member.actorId);
-    if (!actor) continue;
-    
-    // Check for active tokens of this actor on the scene
-    // Exclude ALL party tokens, not just the current one
-    const memberTokens = canvas.tokens.placeables.filter(t => 
-      t.actor?.id === member.actorId && 
-      !t.document.getFlag('party-vision', 'memberData') // Exclude ALL party tokens
-    );
-    
-    // If member has active tokens, use their light
-    for (const token of memberTokens) {
-      if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
-        lights.push({
-          actorName: actor.name, // Add actorName for logging
-          bright: token.document.light.bright || 0,
-          dim: token.document.light.dim || 0,
-          angle: token.document.light.angle || 360,
-          color: token.document.light.color,
-          alpha: token.document.light.alpha || 0.5,
-          animation: token.document.light.animation || {},
-          coloration: token.document.light.coloration || 1,
-          luminosity: token.document.light.luminosity || 0.5,
-          attenuation: token.document.light.attenuation || 0.5,
-          contrast: token.document.light.contrast || 0,
-          saturation: token.document.light.saturation || 0,
-          shadows: token.document.light.shadows || 0
-        });
-      }
-    }
-  }
-  
-  // Aggregate lighting
-  const aggregatedLight = aggregateLights(lights);
-  
-  // Update party token lighting with error handling
-  try {
-    await partyToken.document.update({ light: aggregatedLight });
-    console.log(`Party Vision | Updated party token lighting: bright=${aggregatedLight.bright}, dim=${aggregatedLight.dim}`);
-  } catch (error) {
-    console.error(`Party Vision | ❌ Failed to update party token lighting:`, error);
-  }
-}
-
-/**
- * Aggregate multiple light sources into a single light configuration
- * @param {Array} lights - Array of light configurations
- * @returns {Object} Aggregated light configuration
- */
-function aggregateLights(lights) {
-  if (lights.length === 0) {
-    // No lights - return dark configuration
-    console.log(`Party Vision | No lights found, party token will be dark`);
-    return {
-      bright: 0,
-      dim: 0,
-      angle: 360,
-      color: null,
-      alpha: 0.5,
-      animation: {},
-      coloration: 1,
-      luminosity: 0.5,
-      attenuation: 0.5,
-      contrast: 0,
-      saturation: 0,
-      shadows: 0
+    // Store original lighting
+    const originalLight = {
+      bright: token.document.light.bright || 0,
+      dim: token.document.light.dim || 0,
+      angle: token.document.light.angle || 360,
+      color: token.document.light.color || null,
+      alpha: token.document.light.alpha || 0.5,
+      animation: token.document.light.animation || {}
     };
+    
+    memberData.push({
+      actorId: actor.id,
+      actorUuid: actor.uuid,
+      name: actor.name,
+      img: actor.img,
+      dx: dx,
+      dy: dy,
+      isLeader: i === leaderIndex,
+      originalLight: originalLight
+    });
   }
   
-  if (lights.length === 1) {
-    // Single light - return as-is
-    console.log(`Party Vision | Using ${lights[0].actorName}'s light (only source)`);
-    return lights[0];
-  }
+  // Determine natural facing based on leader position relative to group
+  const naturalFacing = determineNaturalFacing(memberData);
+  console.log(`Party Vision | Natural facing determined: ${naturalFacing}`);
   
-  // Multiple lights - use the brightest
-  let brightestLight = lights[0];
-  let maxRange = lights[0].bright + lights[0].dim;
+  // Calculate movement capabilities (slowest member determines party speed)
+  const movementData = calculateMovementCapabilities(tokens);
   
-  for (let i = 1; i < lights.length; i++) {
-    const range = lights[i].bright + lights[i].dim;
-    if (range > maxRange) {
-      maxRange = range;
-      brightestLight = lights[i];
+  // Determine party token size (largest member)
+  const maxWidth = Math.max(...tokens.map(t => t.document.width));
+  const maxHeight = Math.max(...tokens.map(t => t.document.height));
+  
+  // Create party token at leader's position
+  const partyTokenData = {
+    name: `Party (${leaderActor.name})`,
+    img: leaderActor.img,
+    x: leaderToken.x,
+    y: leaderToken.y,
+    width: maxWidth,
+    height: maxHeight,
+    displayName: CONST.TOKEN_DISPLAY_MODES.HOVER,
+    displayBars: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER,
+    flags: {
+      'party-vision': {
+        memberData: memberData,
+        naturalFacing: naturalFacing,
+        movement: movementData,
+        formedAt: Date.now()
+      }
     }
-  }
+  };
   
-  console.log(`Party Vision | Multiple lights detected, using ${brightestLight.actorName}'s light (brightest at ${maxRange}ft total)`);
+  // Create the party token
+  const created = await canvas.scene.createEmbeddedDocuments("Token", [partyTokenData]);
+  const partyToken = canvas.tokens.get(created[0].id);
   
-  // Use brightest light's configuration
-  // Could be enhanced to blend colors, etc., but this is a good start
-  return brightestLight;
-}
-
-// ==============================================
-// LIGHT SOURCE CYCLING
-// ==============================================
-
-/**
- * Cycle to the next available light source on the party token
- * Order: Member 1 → Member 2 → ... → No Light → Member 1
- * @param {Token} partyToken - The party token
- */
-async function cycleLightSource(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  if (!memberData) return;
+  // Update party lighting from members
+  await updatePartyLightingFromActors(partyToken);
   
-  // Get or initialize available lights array
-  let availableLights = partyToken.document.getFlag('party-vision', 'availableLights') || [];
-  let activeLightIndex = partyToken.document.getFlag('party-vision', 'activeLightIndex') ?? -1;
+  // Delete original tokens
+  const tokenIds = tokens.map(t => t.id);
+  await canvas.scene.deleteEmbeddedDocuments("Token", tokenIds);
   
-  // If availableLights is empty or outdated, rebuild it
-  if (availableLights.length === 0) {
-    availableLights = await collectAvailableLights(partyToken, memberData);
-    await partyToken.document.setFlag('party-vision', 'availableLights', availableLights);
-  }
+  ui.notifications.info(`Party formed: ${tokens.length} members with ${leaderActor.name} as leader!`);
   
-  // Cycle to next index
-  activeLightIndex = (activeLightIndex + 1) % (availableLights.length + 1); // +1 for "no light" option
-  
-  // Update the active index
-  await partyToken.document.setFlag('party-vision', 'activeLightIndex', activeLightIndex);
-  
-  // Apply the selected light
-  if (activeLightIndex < availableLights.length) {
-    // Apply a member's light
-    const selectedLight = availableLights[activeLightIndex];
-    await partyToken.document.update({ light: selectedLight.light });
-    console.log(`Party Vision | Now using ${selectedLight.actorName}'s light (bright=${selectedLight.light.bright}, dim=${selectedLight.light.dim})`);
-  } else {
-    // "No light" option
-    const noLight = {
-      bright: 0, dim: 0, angle: 360, color: null, alpha: 0.5,
-      animation: {}, coloration: 1, luminosity: 0.5, attenuation: 0.5,
-      contrast: 0, saturation: 0, shadows: 0
-    };
-    await partyToken.document.update({ light: noLight });
-    console.log(`Party Vision | Party lighting turned off`);
+  // Select the new party token
+  if (partyToken) {
+    partyToken.control({ releaseOthers: true });
   }
 }
 
 /**
- * Collect all available light sources from party members
- * @param {Token} partyToken - The party token
- * @param {Array} memberData - Array of member data
- * @returns {Array} Array of available lights with actorId, actorName, and light properties
+ * Apply a formation preset to tokens
+ * @param {Array<Token>} tokens - Tokens to position
+ * @param {number} leaderIndex - Index of the leader
+ * @param {Object} preset - Formation preset data
+ * @returns {Array<Token>} Tokens (unchanged, as this is preview only)
  */
-async function collectAvailableLights(partyToken, memberData) {
-  const lights = [];
+async function applyFormationPreset(tokens, leaderIndex, preset) {
+  // For now, return tokens as-is since formation is applied during deployment
+  // In future versions, this could move tokens before forming
+  return tokens;
+}
+
+/**
+ * Determine the natural facing direction of the formation
+ * @param {Array} memberData - Array of member data with dx/dy offsets
+ * @returns {string} Direction ('north', 'east', 'south', 'west')
+ */
+function determineNaturalFacing(memberData) {
+  // Find the leader
+  const leader = memberData.find(m => m.isLeader);
+  if (!leader) return 'north';
   
-  for (const member of memberData) {
-    const actor = game.actors.get(member.actorId);
-    if (!actor) continue;
+  // Calculate center of all non-leader members
+  const nonLeaders = memberData.filter(m => !m.isLeader);
+  if (nonLeaders.length === 0) return 'north';
+  
+  let sumX = 0;
+  let sumY = 0;
+  nonLeaders.forEach(m => {
+    sumX += m.dx;
+    sumY += m.dy;
+  });
+  
+  const centerX = sumX / nonLeaders.length;
+  const centerY = sumY / nonLeaders.length;
+  
+  // Vector from group center to leader
+  const vectorX = leader.dx - centerX;
+  const vectorY = leader.dy - centerY;
+  
+  // Determine direction based on vector
+  return determineNaturalFacingFromOffsets(vectorX, vectorY);
+}
+
+/**
+ * Calculate movement capabilities for party (slowest member)
+ * @param {Array<Token>} tokens - Party member tokens
+ * @returns {Object} Movement data
+ */
+function calculateMovementCapabilities(tokens) {
+  let minSpeed = Infinity;
+  const commonTypes = new Set();
+  let firstMember = true;
+  
+  tokens.forEach(token => {
+    const actor = token.actor;
+    if (!actor) return;
     
-    let effectiveLight = null;
+    // Get movement speed (system-agnostic)
+    let speed = 30; // Default
     
-    // Check if member has originalLight stored (direct token lighting)
-    if (member.originalLight && (member.originalLight.bright > 0 || member.originalLight.dim > 0)) {
-      effectiveLight = member.originalLight;
+    // Try various common locations for movement speed
+    if (actor.system.attributes?.movement?.walk !== undefined) {
+      speed = actor.system.attributes.movement.walk;
+    } else if (actor.system.attributes?.speed?.value !== undefined) {
+      speed = actor.system.attributes.speed.value;
+    } else if (actor.system.movement?.walk !== undefined) {
+      speed = actor.system.movement.walk;
     }
     
-    // Strategy 1: Check deployed tokens
-    if (!effectiveLight) {
-      const deployedTokens = canvas.tokens.placeables.filter(t => 
-        t.actor?.id === actor.id && 
-        t.id !== partyToken.id &&
-        !t.document.getFlag('party-vision', 'memberData')
-      );
-      
-      if (deployedTokens.length > 0) {
-        const token = deployedTokens[0];
-        if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
-          effectiveLight = token.document.light;
-        }
-      }
-    }
+    minSpeed = Math.min(minSpeed, speed);
     
-    // Strategy 2: Check computed token data
-    if (!effectiveLight) {
-      try {
-        let tokenDoc = null;
-        if (typeof actor.getTokenDocument === 'function') {
-          tokenDoc = await actor.getTokenDocument();
-        } else if (typeof actor.getTokenData === 'function') {
-          tokenDoc = actor.getTokenData();
-        } else if (actor.prototypeToken) {
-          tokenDoc = actor.prototypeToken;
-        }
-        
-        if (tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0)) {
-          effectiveLight = tokenDoc.light;
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    }
-    
-    // Add to lights array if found
-    if (effectiveLight) {
-      lights.push({
-        actorId: actor.id,
-        actorName: actor.name,
-        light: {
-          bright: effectiveLight.bright || 0,
-          dim: effectiveLight.dim || 0,
-          angle: effectiveLight.angle || 360,
-          color: effectiveLight.color || null,
-          alpha: effectiveLight.alpha || 0.5,
-          animation: effectiveLight.animation || {},
-          coloration: effectiveLight.coloration || 1,
-          luminosity: effectiveLight.luminosity || 0.5,
-          attenuation: effectiveLight.attenuation || 0.5,
-          contrast: effectiveLight.contrast || 0,
-          saturation: effectiveLight.saturation || 0,
-          shadows: effectiveLight.shadows || 0
+    // Track movement types
+    const types = [];
+    if (actor.system.attributes?.movement) {
+      Object.keys(actor.system.attributes.movement).forEach(type => {
+        if (actor.system.attributes.movement[type] > 0) {
+          types.push(type);
         }
       });
     }
-  }
+    
+    if (firstMember) {
+      types.forEach(t => commonTypes.add(t));
+      firstMember = false;
+    } else {
+      // Keep only types common to all members
+      const typeSet = new Set(types);
+      commonTypes.forEach(t => {
+        if (!typeSet.has(t)) {
+          commonTypes.delete(t);
+        }
+      });
+    }
+  });
   
-  return lights;
+  return {
+    speed: minSpeed === Infinity ? 30 : minSpeed,
+    types: Array.from(commonTypes)
+  };
 }
 
 // ==============================================
-// HELPER: DEPLOY PARTY FUNCTION
+// DEPLOY PARTY SYSTEM
 // ==============================================
 
 /**
- * Shows the deploy party dialog to select direction
+ * Show the Deploy Party dialog
  * @param {Token} partyToken - The party token to deploy
- * @returns {Promise<void>}
  */
 async function showDeployDialog(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
@@ -1857,9 +861,7 @@ async function showDeployDialog(partyToken) {
   // Find the leader
   const leaderData = memberData.find(m => m.isLeader) || memberData[0];
   
-  // Check if any tokens are selected for potential split
-  const selectedTokens = canvas.tokens.controlled;
-  const hasSelection = selectedTokens.length > 0 && selectedTokens[0].id === partyToken.id;
+  const lastDirection = game.settings.get('party-vision', 'lastDeployDirection');
 
   // Show deployment dialog with direction options
   new Dialog({
@@ -1955,16 +957,11 @@ async function showDeployDialog(partyToken) {
         callback: async (html) => {
           const selectedDirection = html.find('.direction-btn.selected').data('direction') || 'north';
           
-          // Convert direction string to radians
-          const directionRadians = {
-            'north': -Math.PI / 2,
-            'east': 0,
-            'south': Math.PI / 2,
-            'west': Math.PI
-          };
+          // Save last used direction
+          await game.settings.set('party-vision', 'lastDeployDirection', selectedDirection);
           
-          const radians = directionRadians[selectedDirection];
-          await deployParty(partyToken, radians, true);
+          // Deploy with direction string instead of radians
+          await deployParty(partyToken, selectedDirection, false);
         }
       },
       cancel: { 
@@ -1979,8 +976,8 @@ async function showDeployDialog(partyToken) {
         $(this).addClass('selected');
       });
       
-      // Select north by default
-      html.find('.direction-btn[data-direction="north"]').addClass('selected');
+      // Select last used direction by default
+      html.find(`.direction-btn[data-direction="${lastDirection}"]`).addClass('selected');
     }
   }, {
     width: 400,
@@ -1989,546 +986,57 @@ async function showDeployDialog(partyToken) {
 }
 
 /**
- * Deploys the party token, spawning individual member tokens
+ * Deploy party tokens with FIXED rotation logic that rotates around the leader
  * @param {Token} partyToken - The party token to deploy
- * @param {number} radians - Direction to face (in radians)
- * @param {boolean} fromCombat - Whether deployment is triggered by combat (skips some checks)
- * @returns {Promise<void>}
+ * @param {string} targetDirection - Direction to face ('north', 'east', 'south', 'west')
+ * @param {boolean} fromCombat - Whether deployment is from combat
  */
-// ==============================================
-// HELPER: SPLIT PARTY DIALOG
-// ==============================================
-
-/**
- * Shows the split party dialog to select which members to deploy or create a new party
- * @param {Token} partyToken - The party token to split
- * @returns {Promise<void>}
- */
-async function showSplitPartyDialog(partyToken) {
+async function deployParty(partyToken, targetDirection, fromCombat = false) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  if (!memberData || memberData.length === 0) {
+  if (!memberData) {
     ui.notifications.warn("This is not a valid Party Token.");
     return;
   }
 
-  // If only one member, just deploy normally
-  if (memberData.length === 1) {
-    const directionRadians = { 'north': -Math.PI / 2 };
-    await deployParty(partyToken, directionRadians['north'], false);
-    return;
-  }
-
-  // Build member selection checkboxes
-  const memberCheckboxes = memberData.map((member, index) => {
-    const isLeader = member.isLeader ? ' <span style="color: #00ff88;">(Leader)</span>' : '';
-    const actor = game.actors.get(member.actorId);
-    const memberImg = member.img || actor?.img || "icons/svg/mystery-man.svg";
-    
-    return `
-      <div style="padding: 8px; background: rgba(0,0,0,0.3); margin: 5px 0; border-radius: 4px;">
-        <label style="cursor: pointer; display: flex; align-items: center;">
-          <input type="checkbox" class="member-checkbox" data-index="${index}" style="margin-right: 10px;">
-          <img src="${memberImg}" style="width: 32px; height: 32px; border: none; border-radius: 4px; margin-right: 10px;">
-          <span style="color: #ddd;">${member.name}${isLeader}</span>
-        </label>
-      </div>
-    `;
-  }).join('');
-
-  new Dialog({
-    title: "Split Party",
-    content: `
-      <style>
-        .split-dialog {
-          padding: 15px;
-          font-family: "Signika", sans-serif;
-        }
-        .split-dialog h3 {
-          margin: 0 0 15px 0;
-          color: #222;
-          font-size: 1.1em;
-          border-bottom: 2px solid #00ff88;
-          padding-bottom: 10px;
-        }
-        .split-dialog .info-text {
-          font-size: 0.9em;
-          color: #444;
-          margin: 10px 0;
-          line-height: 1.4;
-        }
-        .split-dialog .warning-text {
-          font-size: 0.85em;
-          color: #ff8800;
-          margin: 10px 0;
-          padding: 8px;
-          background: rgba(255, 136, 0, 0.1);
-          border-left: 3px solid #ff8800;
-          border-radius: 4px;
-        }
-        .member-list {
-          max-height: 300px;
-          overflow-y: auto;
-          margin: 15px 0;
-        }
-        .select-all-btn {
-          padding: 8px 15px;
-          background: rgba(0, 136, 255, 0.2);
-          border: 1px solid #0088ff;
-          border-radius: 4px;
-          color: #0088ff;
-          cursor: pointer;
-          font-size: 0.9em;
-          margin-bottom: 10px;
-          transition: all 0.2s;
-        }
-        .select-all-btn:hover {
-          background: rgba(0, 136, 255, 0.3);
-        }
-      </style>
-      <div class="split-dialog">
-        <h3>Split Party</h3>
-        <p class="info-text">
-          Select which party members to split off. You can either deploy them individually or create a new party token.
-        </p>
-        <button class="select-all-btn" id="toggle-all">Select All</button>
-        <div class="member-list">
-          ${memberCheckboxes}
-        </div>
-        <p class="warning-text">
-          <i class="fas fa-info-circle"></i> Lighting from split members will be transferred appropriately.
-        </p>
-      </div>
-    `,
-    buttons: {
-      deploySelected: {
-        label: '<i class="fas fa-users"></i> Deploy Selected',
-        callback: async (html) => {
-          const selectedIndices = [];
-          html.find('.member-checkbox:checked').each(function() {
-            selectedIndices.push(parseInt($(this).data('index')));
-          });
-
-          if (selectedIndices.length === 0) {
-            ui.notifications.warn("Please select at least one member to deploy.");
-            return;
-          }
-
-          await splitAndDeployMembers(partyToken, selectedIndices, false);
-        }
-      },
-      createParty: {
-        label: '<i class="fas fa-users-cog"></i> Create New Party',
-        callback: async (html) => {
-          const selectedIndices = [];
-          html.find('.member-checkbox:checked').each(function() {
-            selectedIndices.push(parseInt($(this).data('index')));
-          });
-
-          if (selectedIndices.length === 0) {
-            ui.notifications.warn("Please select at least one member for the new party.");
-            return;
-          }
-
-          if (selectedIndices.length === 1) {
-            ui.notifications.warn("Cannot create a party with only one member. Use Deploy Selected instead.");
-            return;
-          }
-
-          await splitAndDeployMembers(partyToken, selectedIndices, true);
-        }
-      },
-      cancel: { 
-        label: '<i class="fas fa-times"></i> Cancel',
-        callback: () => {}
-      }
-    },
-    default: "deploySelected",
-    render: (html) => {
-      // Toggle all functionality
-      let allSelected = false;
-      html.find('#toggle-all').on('click', function() {
-        allSelected = !allSelected;
-        html.find('.member-checkbox').prop('checked', allSelected);
-        $(this).text(allSelected ? 'Deselect All' : 'Select All');
-      });
-    }
-  }, {
-    width: 450,
-    classes: ["dialog", "party-vision-split-dialog"]
-  }).render(true);
-}
-
-// ==============================================
-// HELPER: SPLIT AND DEPLOY MEMBERS
-// ==============================================
-
-/**
- * Splits the party by deploying selected members and handling remaining members
- * @param {Token} partyToken - The original party token
- * @param {Array<number>} selectedIndices - Indices of members to split off
- * @param {boolean} createNewParty - Whether to create a new party token or deploy individually
- * @returns {Promise<void>}
- */
-async function splitAndDeployMembers(partyToken, selectedIndices, createNewParty) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  const gridSize = canvas.grid.size;
-  
-  // Separate selected and remaining members
-  const selectedMembers = selectedIndices.map(i => memberData[i]);
-  const remainingMembers = memberData.filter((_, i) => !selectedIndices.includes(i));
-  
-  // Check if we're removing all members
-  if (remainingMembers.length === 0) {
-    // Just deploy all and delete the party token
-    await deployParty(partyToken, -Math.PI / 2, false);
-    return;
-  }
-  
-  // Find an adjacent spot for the new party token or deployed members
-  const adjacentSpot = findAdjacentSpot(partyToken);
-  
-  if (createNewParty) {
-    // Create a new party token with selected members
-    await createSplitPartyToken(partyToken, selectedMembers, adjacentSpot);
-  } else {
-    // Deploy selected members individually
-    await deploySelectedMembers(partyToken, selectedMembers, adjacentSpot);
-  }
-  
-  // Update the original party token with remaining members
-  await updatePartyToken(partyToken, remainingMembers);
-  
-  // Handle lighting updates
-  await updatePartyLightingFromActors(partyToken);
-  
-  const action = createNewParty ? "new party token created" : "members deployed";
-  ui.notifications.info(`Party split: ${selectedMembers.length} ${action}, ${remainingMembers.length} remain in party`);
-}
-
-/**
- * Finds an adjacent spot next to the party token that's clear of walls and tokens
- * @param {Token} partyToken - The party token to find a spot adjacent to
- * @returns {{x: number, y: number}} Grid coordinates for adjacent spot
- */
-function findAdjacentSpot(partyToken) {
-  const gridSize = canvas.grid.size;
-  const partyGridX = Math.round(partyToken.x / gridSize);
-  const partyGridY = Math.round(partyToken.y / gridSize);
-  
-  // Check adjacent spots in order: right, bottom, left, top
-  const adjacentOffsets = [
-    {dx: 1, dy: 0},   // right
-    {dx: 0, dy: 1},   // bottom
-    {dx: -1, dy: 0},  // left
-    {dx: 0, dy: -1}   // top
-  ];
-  
-  for (const offset of adjacentOffsets) {
-    const testX = partyGridX + offset.dx;
-    const testY = partyGridY + offset.dy;
-    
-    // Create dummy token data for validation
-    const dummyTokenData = {
-      width: 1,
-      height: 1
-    };
-    
-    if (isSpotValidForPlacement(testX, testY, dummyTokenData, partyToken)) {
-      return { x: testX, y: testY };
-    }
-  }
-  
-  // If no adjacent spot found, return same spot (will be handled by spiral search)
-  return { x: partyGridX, y: partyGridY };
-}
-
-/**
- * Checks if a spot is valid for placing a new token (excluding the original party token)
- * @param {number} gridX - Grid X coordinate
- * @param {number} gridY - Grid Y coordinate  
- * @param {Object} tokenData - Token data object
- * @param {Token} excludeToken - Token to exclude from collision check
- * @returns {boolean} True if spot is valid
- */
-function isSpotValidForPlacement(gridX, gridY, tokenData, excludeToken) {
-  const gridSize = canvas.grid.size;
-  const finalX = gridX * gridSize;
-  const finalY = gridY * gridSize;
-  
-  const tokenWidth = tokenData.width * gridSize;
-  const tokenHeight = tokenData.height * gridSize;
-  const centerX = finalX + (tokenWidth / 2);
-  const centerY = finalY + (tokenHeight / 2);
-  
-  // Check for wall collisions
-  const testPoints = [
-    { x: centerX, y: centerY },
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET },
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET }
-  ];
-  
-  for (const point of testPoints) {
-    const testOrigin = { x: point.x - 1, y: point.y - 1 };
-    const testDest = { x: point.x + 1, y: point.y + 1 };
-    
-    for (const wall of canvas.walls.placeables) {
-      const wallMovement = wall.document.move ?? CONST.WALL_MOVEMENT_TYPES.NORMAL;
-      if (wallMovement === CONST.WALL_MOVEMENT_TYPES.NONE) continue;
-      
-      const wallCoords = wall.document.c;
-      const wallA = { x: wallCoords[0], y: wallCoords[1] };
-      const wallB = { x: wallCoords[2], y: wallCoords[3] };
-      
-      if (foundry.utils.lineSegmentIntersects(testOrigin, testDest, wallA, wallB)) {
-        return false;
-      }
-    }
-  }
-  
-  // Check for token overlaps (excluding the original party token)
-  for (const token of canvas.tokens.placeables) {
-    if (excludeToken && token.id === excludeToken.id) continue;
-    
-    const tokenRect = {
-      x: token.x,
-      y: token.y,
-      width: token.document.width * gridSize,
-      height: token.document.height * gridSize
-    };
-    const newRect = {
-      x: finalX,
-      y: finalY,
-      width: tokenWidth,
-      height: tokenHeight
-    };
-    
-    if (tokenRect.x < newRect.x + newRect.width &&
-        tokenRect.x + tokenRect.width > newRect.x &&
-        tokenRect.y < newRect.y + newRect.height &&
-        tokenRect.y + tokenRect.height > newRect.y) {
-      return false;
-    }
-  }
-  
-  return true;
-}
-
-/**
- * Creates a new party token with the split-off members
- * @param {Token} originalToken - The original party token
- * @param {Array} members - Members to include in new party
- * @param {{x: number, y: number}} gridSpot - Grid coordinates for new token
- * @returns {Promise<void>}
- */
-async function createSplitPartyToken(originalToken, members, gridSpot) {
-  const gridSize = canvas.grid.size;
-  const x = gridSpot.x * gridSize;
-  const y = gridSpot.y * gridSize;
-  
-  // Get the original party configuration
-  const originalName = originalToken.document.name;
-  const originalImg = originalToken.document.texture.src;
-  
-  // If only one member, just deploy them
-  if (members.length === 1) {
-    await deploySelectedMembers(originalToken, members, gridSpot);
-    return;
-  }
-  
-  // Calculate average position for the new party members
-  const avgX = members.reduce((sum, m) => sum + (m.dx || 0), 0) / members.length;
-  const avgY = members.reduce((sum, m) => sum + (m.dy || 0), 0) / members.length;
-  
-  // Recenter member positions relative to their average
-  const recenteredMembers = members.map(m => ({
-    ...m,
-    dx: (m.dx || 0) - Math.round(avgX),
-    dy: (m.dy || 0) - Math.round(avgY)
-  }));
-  
-  // Find the leader in the new party (or default to first member)
-  let leaderIndex = recenteredMembers.findIndex(m => m.isLeader);
-  if (leaderIndex === -1) {
-    leaderIndex = 0;
-  }
-  
-  // Build leader options
-  const leaderOptions = recenteredMembers.map((m, idx) => {
-    const isSelected = idx === leaderIndex;
-    let label = m.name;
-    if (idx === leaderIndex) label += ' (Current)';
-    return `<option value="${idx}"${isSelected ? ' selected' : ''}>${label}</option>`;
-  }).join('');
-  
-  // Show configuration dialog for the new party
-  new Dialog({
-    title: "Configure New Party",
-    content: `
-      <form class="pv-new-party">
-        <div class="form-group">
-          <label>Party Name</label>
-          <input type="text" name="partyName" value="${originalName} (Split)" placeholder="Enter party name...">
-        </div>
-        
-        <div class="form-group">
-          <label>Party Token Image</label>
-          <div class="pv-image-picker-section">
-            <div class="pv-image-preview-container">
-              <div class="pv-image-preview" id="partyImagePreview">
-                <img src="${originalImg}" alt="Party Token">
-              </div>
-              <div class="pv-input-row">
-                <input type="text" name="partyImage" id="partyImageInput" value="${originalImg}">
-                <button type="button" class="file-picker" data-type="imagevideo" data-target="partyImage">
-                  <i class="fas fa-file-import"></i> Browse
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="form-group">
-          <label>Party Leader</label>
-          <select name="leaderIndex">
-            ${leaderOptions}
-          </select>
-        </div>
-      </form>
-    `,
-    buttons: {
-      create: {
-        label: '<i class="fas fa-users-cog"></i> Create Party',
-        callback: async (html) => {
-          const partyName = html.find('[name="partyName"]').val() || `${originalName} (Split)`;
-          const partyImage = html.find('[name="partyImage"]').val() || originalImg;
-          const selectedLeaderIndex = parseInt(html.find('[name="leaderIndex"]').val()) || 0;
-          
-          // Update leader status
-          recenteredMembers.forEach((m, idx) => {
-            m.isLeader = idx === selectedLeaderIndex;
-          });
-          
-          // Calculate natural facing for the new party based on member positions relative to leader
-          const leader = recenteredMembers[selectedLeaderIndex];
-          const nonLeaderMembers = recenteredMembers.filter((_, idx) => idx !== selectedLeaderIndex);
-          let avgNonLeaderX = 0;
-          let avgNonLeaderY = 0;
-          
-          if (nonLeaderMembers.length > 0) {
-            for (const member of nonLeaderMembers) {
-              avgNonLeaderX += member.dx;
-              avgNonLeaderY += member.dy;
-            }
-            avgNonLeaderX /= nonLeaderMembers.length;
-            avgNonLeaderY /= nonLeaderMembers.length;
-          }
-          
-          // Determine natural facing
-          const naturalFacing = determineNaturalFacingFromOffsets(-avgNonLeaderX, -avgNonLeaderY);
-          
-          // Create token data for new party
-          const newPartyData = {
-            name: partyName,
-            x: x,
-            y: y,
-            texture: { src: partyImage },
-            width: 1,
-            height: 1,
-            flags: {
-              'party-vision': {
-                memberData: recenteredMembers,
-                naturalFacing: naturalFacing
-              }
-            }
-          };
-          
-          // Create the new party token
-          const [newPartyDoc] = await canvas.scene.createEmbeddedDocuments("Token", [newPartyData]);
-          const newPartyToken = canvas.tokens.get(newPartyDoc.id);
-          
-          // Update lighting for the new party token
-          await updatePartyLightingFromActors(newPartyToken);
-          
-          // Redraw the new party token to show portraits
-          if (newPartyToken) {
-            newPartyToken.renderFlags.set({ redraw: true });
-          }
-          
-          ui.notifications.info(`Created new party: ${partyName}`);
-        }
-      },
-      cancel: {
-        label: '<i class="fas fa-times"></i> Cancel',
-        callback: () => {}
-      }
-    },
-    default: "create",
-    render: (html) => {
-      const imageInput = html.find('#partyImageInput');
-      const imagePreview = html.find('#partyImagePreview');
-      
-      // Function to update image preview
-      const updatePreview = (path) => {
-        if (path && path.trim() !== '') {
-          imagePreview.html(`<img src="${path}" alt="Party Token" onerror="this.parentElement.innerHTML='<div class=\\'pv-image-preview-placeholder\\'>Invalid image</div>'">`);
-        } else {
-          imagePreview.html('<div class="pv-image-preview-placeholder">No preview</div>');
-        }
-      };
-      
-      // Update preview when input changes
-      imageInput.on('input change', (event) => {
-        updatePreview(event.target.value);
-      });
-      
-      // Add file picker functionality
-      html.find('.file-picker').on('click', (event) => {
-        const button = event.currentTarget;
-        const target = button.dataset.target;
-        const inputField = html.find(`[name="${target}"]`)[0];
-        
-        const fp = new FilePicker({
-          type: "imagevideo",
-          current: inputField.value,
-          callback: (path) => {
-            inputField.value = path;
-            updatePreview(path);
-            imageInput.trigger('change');
-          }
-        });
-        fp.browse();
-      });
-    }
-  }, {
-    width: 500,
-    classes: ["dialog", "party-vision-dialog"]
-  }).render(true);
-}
-
-/**
- * Deploys selected members individually at the specified location
- * @param {Token} partyToken - The original party token
- * @param {Array} members - Members to deploy
- * @param {{x: number, y: number}} gridSpot - Starting grid coordinates
- * @returns {Promise<void>}
- */
-async function deploySelectedMembers(partyToken, members, gridSpot) {
   const gridSize = canvas.grid.size;
   const assignedGridSpots = new Set();
+  
+  // Get the formation's natural facing (how it was originally formed)
+  const naturalFacing = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
+  
+  console.log(`Party Vision | Deploying formation: natural facing=${naturalFacing}, target=${targetDirection}`);
+  
+  // Calculate how many 90-degree rotation steps we need
+  const rotationSteps = calculateRotationSteps(naturalFacing, targetDirection);
+  console.log(`Party Vision | Rotation steps (90° CW each): ${rotationSteps}`);
+  
+  // Find the leader
+  const leaderData = memberData.find(m => m.isLeader) || memberData[0];
+  
+  // Party token CENTER is where we'll place the leader
+  // This ensures the formation rotates AROUND the leader
+  const partyTokenWidth = partyToken.document.width;
+  const partyTokenHeight = partyToken.document.height;
+  const partyCenterX = partyToken.x + (partyTokenWidth * gridSize / 2);
+  const partyCenterY = partyToken.y + (partyTokenHeight * gridSize / 2);
+  
   const newTokensData = [];
   const finalPositions = [];
   const shouldAnimate = game.settings.get('party-vision', 'animateDeployment');
   
-  for (const member of members) {
+  // Sort members by distance from center (place closer ones first for better overlap handling)
+  const sortedMembers = [...memberData].sort((a, b) => 
+    (Math.abs(a.dx) + Math.abs(a.dy)) - (Math.abs(b.dx) + Math.abs(b.dy))
+  );
+  
+  for (const member of sortedMembers) {
     // Get actor
     let actor;
     if (member.actorUuid) {
       try {
         actor = await fromUuid(member.actorUuid);
       } catch (e) {
-        console.warn(`Party Vision: Could not resolve actor UUID ${member.actorUuid}`, e);
+        console.warn(`Party Vision | Could not resolve actor UUID ${member.actorUuid}`, e);
       }
     }
     
@@ -2537,19 +1045,32 @@ async function deploySelectedMembers(partyToken, members, gridSpot) {
     }
     
     if (!actor) {
-      console.warn(`Party Vision: Actor not found for member ${member.name || member.actorId}`);
+      console.warn(`Party Vision | Actor not found for member ${member.name || member.actorId}`);
       continue;
     }
     
-    // Calculate position relative to the deployment spot
-    const idealGridX = gridSpot.x + (member.dx || 0);
-    const idealGridY = gridSpot.y + (member.dy || 0);
-    
-    // Get fresh token data
+    // Get token data
     const protoToken = actor.prototypeToken;
     const tokenData = protoToken.toObject();
     
-    // Find valid spot
+    // CRITICAL FIX: Apply rotation to the member's offset FROM the leader
+    // This rotates the formation AROUND the leader as the center point
+    const rotatedOffset = rotateOffset(member.dx, member.dy, rotationSteps);
+    
+    console.log(`${member.name}: original offset (${member.dx.toFixed(1)}, ${member.dy.toFixed(1)}) → rotated (${rotatedOffset.dx.toFixed(1)}, ${rotatedOffset.dy.toFixed(1)})`);
+    
+    // Calculate member's center position in world coordinates
+    // Start from party center (where leader will be) and add rotated offset
+    const memberCenterX = partyCenterX + (rotatedOffset.dx * gridSize);
+    const memberCenterY = partyCenterY + (rotatedOffset.dy * gridSize);
+    
+    // Convert from center to top-left corner for token placement
+    const tokenWidthGrids = tokenData.width;
+    const tokenHeightGrids = tokenData.height;
+    const idealGridX = Math.round((memberCenterX / gridSize) - (tokenWidthGrids / 2));
+    const idealGridY = Math.round((memberCenterY / gridSize) - (tokenHeightGrids / 2));
+    
+    // Find valid spot (handles wall collisions and overlaps)
     const validSpot = findValidSpot(idealGridX, idealGridY, tokenData, assignedGridSpots);
     assignedGridSpots.add(`${validSpot.x},${validSpot.y}`);
     
@@ -2567,12 +1088,13 @@ async function deploySelectedMembers(partyToken, members, gridSpot) {
       img: protoToken.texture?.src || actor.img
     };
     
-    // Restore original token lighting if it was stored
+    // Restore original token lighting if stored
     if (member.originalLight && (member.originalLight.bright > 0 || member.originalLight.dim > 0)) {
       console.log(`Party Vision | Restoring lighting for ${member.name}: bright=${member.originalLight.bright}, dim=${member.originalLight.dim}`);
       newToken.light = member.originalLight;
     }
     
+    // Remove synthetic data that can break actor linking
     delete newToken.actorData;
     delete newToken.delta;
     
@@ -2583,7 +1105,7 @@ async function deploySelectedMembers(partyToken, members, gridSpot) {
     }
   }
   
-  // Create tokens
+  // Create all tokens
   const createdTokens = await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
   
   // Animate if enabled
@@ -2609,174 +1131,53 @@ async function deploySelectedMembers(partyToken, members, gridSpot) {
     await Promise.all(animations);
     await new Promise(resolve => setTimeout(resolve, 100));
   }
-}
-
-/**
- * Updates the party token with remaining members after a split
- * @param {Token} partyToken - The party token to update
- * @param {Array} remainingMembers - Members that remain in the party
- * @returns {Promise<void>}
- */
-async function updatePartyToken(partyToken, remainingMembers) {
-  // If only one member remains, deploy them and delete the party token
-  if (remainingMembers.length === 1) {
-    await deployParty(partyToken, -Math.PI / 2, false);
-    return;
-  }
-  
-  // Recalculate center position for remaining members
-  const avgX = remainingMembers.reduce((sum, m) => sum + (m.dx || 0), 0) / remainingMembers.length;
-  const avgY = remainingMembers.reduce((sum, m) => sum + (m.dy || 0), 0) / remainingMembers.length;
-  
-  // Recenter remaining members
-  const recenteredMembers = remainingMembers.map(m => ({
-    ...m,
-    dx: (m.dx || 0) - Math.round(avgX),
-    dy: (m.dy || 0) - Math.round(avgY)
-  }));
-  
-  // Ensure there's still a leader
-  let hasLeader = recenteredMembers.some(m => m.isLeader);
-  if (!hasLeader) {
-    recenteredMembers[0].isLeader = true;
-  }
-  
-  // Update the party token's member data
-  await partyToken.document.setFlag('party-vision', 'memberData', recenteredMembers);
-  
-  // Redraw to update portraits
-  partyToken.renderFlags.set({ redraw: true });
-}
-
-// ==============================================
-// HELPER: DEPLOY PARTY FUNCTION
-// ==============================================
-
-async function deployParty(partyToken, radians, fromCombat = false) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  const gridSize = canvas.grid.size;
-  const assignedGridSpots = new Set();
-  
-  // Get the formation's natural facing direction (the direction it was facing when formed)
-  // This is stored as a string ('north', 'east', 'south', 'west') and needs to be converted to radians
-  const naturalFacingStr = partyToken.document.getFlag('party-vision', 'naturalFacing') || 'north';
-  const naturalFacingRadians = {
-    'north': -Math.PI / 2,
-    'east': 0,
-    'south': Math.PI / 2,
-    'west': Math.PI
-  }[naturalFacingStr] || (-Math.PI / 2);
-  
-  // Calculate the rotation needed: target direction - natural facing direction
-  const rotationAngle = radians - naturalFacingRadians;
-  
-  const cos = Math.cos(rotationAngle);
-  const sin = Math.sin(rotationAngle);
-  const newTokensData = [];
-  const finalPositions = []; // Store final positions for animation
-  
-  // Sort by distance from center
-  const sortedMembers = [...memberData].sort((a, b) => 
-    (Math.abs(a.dx) + Math.abs(a.dy)) - (Math.abs(b.dx) + Math.abs(b.dy))
-  );
-  
-  for (const member of sortedMembers) {
-    // Get actor - try UUID first, then ID for robust resolution
-    let actor;
-    if (member.actorUuid) {
-      try {
-        actor = await fromUuid(member.actorUuid);
-      } catch (e) {
-        console.warn(`Party Vision: Could not resolve actor UUID ${member.actorUuid}`, e);
-      }
-    }
-    
-    if (!actor) {
-      actor = game.actors.get(member.actorId);
-    }
-    
-    if (!actor) {
-      console.warn(`Party Vision: Actor not found for member ${member.name || member.actorId}`);
-      continue;
-    }
-    
-    const dx = member.dx;
-    const dy = member.dy;
-    const rotatedX = Math.round(dx * cos - dy * sin);
-    const rotatedY = Math.round(dx * sin + dy * cos);
-    
-    const partyGridX = partyToken.x / gridSize;
-    const partyGridY = partyToken.y / gridSize;
-    const idealGridX = Math.round(partyGridX + rotatedX);
-    const idealGridY = Math.round(partyGridY + rotatedY);
-    
-    // Get fresh token data from actor's prototype
-    const protoToken = actor.prototypeToken;
-    const tokenData = protoToken.toObject();
-    
-    const validSpot = findValidSpot(idealGridX, idealGridY, tokenData, assignedGridSpots);
-    assignedGridSpots.add(`${validSpot.x},${validSpot.y}`);
-    
-    const finalX = validSpot.x * gridSize;
-    const finalY = validSpot.y * gridSize;
-    
-    // Check if animation is enabled
-    const shouldAnimate = game.settings.get('party-vision', 'animateDeployment');
-    
-    // CRITICAL: Create clean token data for proper actor linking
-    const newToken = {
-      ...tokenData,
-      x: shouldAnimate ? partyToken.x : finalX,  // Start at party location if animating
-      y: shouldAnimate ? partyToken.y : finalY,
-      actorId: actor.id,
-      actorLink: protoToken.actorLink,
-      // Ensure actor data is preserved
-      name: protoToken.name || actor.name,
-      img: protoToken.texture?.src || actor.img
-    };
-    
-    // CRITICAL: Remove synthetic actor data that can break PF2e linking
-    delete newToken.actorData;
-    delete newToken.delta;
-    
-    newTokensData.push(newToken);
-    
-    // Store final position for animation
-    if (shouldAnimate) {
-      finalPositions.push({ x: finalX, y: finalY });
-    }
-  }
-  
-  // Create tokens
-  const createdTokens = await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
-  
-  // Animate if enabled
-  if (game.settings.get('party-vision', 'animateDeployment')) {
-    const animationSpeed = game.settings.get('party-vision', 'deploymentAnimationSpeed');
-    const animations = [];
-    
-    for (let i = 0; i < createdTokens.length; i++) {
-      const tokenDoc = createdTokens[i];
-      const token = canvas.tokens.get(tokenDoc.id);
-      const finalPos = finalPositions[i];
-      
-      if (token && finalPos) {
-        // Animate token to final position
-        animations.push(
-          token.document.update({ x: finalPos.x, y: finalPos.y }, { animate: true, animation: { duration: animationSpeed } })
-        );
-      }
-    }
-    
-    // Wait for all animations to complete
-    await Promise.all(animations);
-    
-    // Small delay to ensure animations are visible
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
   
   // Delete party token
   await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+  
+  ui.notifications.info(`Party deployed: ${newTokensData.length} members facing ${targetDirection}!`);
+}
+
+/**
+ * CRITICAL FIX: Rotate an offset by a number of 90-degree steps
+ * This is the correct way to rotate formations around the leader
+ * @param {number} dx - X offset in grid units
+ * @param {number} dy - Y offset in grid units  
+ * @param {number} steps - Number of 90-degree clockwise rotations (0-3)
+ * @returns {{dx: number, dy: number}} Rotated offset
+ */
+function rotateOffset(dx, dy, steps) {
+  let newDx = dx;
+  let newDy = dy;
+  
+  // Each step is a 90-degree clockwise rotation: (x, y) → (-y, x)
+  for (let i = 0; i < steps; i++) {
+    const temp = newDx;
+    newDx = -newDy;
+    newDy = temp;
+  }
+  
+  return { dx: newDx, dy: newDy };
+}
+
+/**
+ * Calculate number of 90-degree clockwise rotation steps needed
+ * @param {string} fromDirection - Starting direction ('north', 'east', 'south', 'west')
+ * @param {string} toDirection - Target direction
+ * @returns {number} Number of 90-degree clockwise steps (0-3)
+ */
+function calculateRotationSteps(fromDirection, toDirection) {
+  const directions = ['north', 'east', 'south', 'west'];
+  const fromIndex = directions.indexOf(fromDirection);
+  const toIndex = directions.indexOf(toDirection);
+  
+  if (fromIndex === -1 || toIndex === -1) {
+    console.warn(`Party Vision | Unknown direction: from=${fromDirection}, to=${toDirection}`);
+    return 0;
+  }
+  
+  // Calculate how many 90° clockwise rotations to get from 'from' to 'to'
+  return (toIndex - fromIndex + 4) % 4;
 }
 
 /**
@@ -2804,89 +1205,648 @@ function findValidSpot(idealX, idealY, tokenData, assignedSpots) {
     }
   }
   
-  console.warn(`Party Vision | No valid spot found near (${idealX}, ${idealY})`);
+  // Fallback to ideal position if no valid spot found
+  console.warn('Party Vision | Could not find valid spot, using ideal position');
   return { x: idealX, y: idealY };
 }
 
 /**
- * Checks if a grid position is valid for token placement
- * @param {number} gridX - Grid X coordinate to check
- * @param {number} gridY - Grid Y coordinate to check
- * @param {Object} tokenData - Token data object
- * @param {Set} assignedSpots - Set of already assigned grid positions
- * @returns {boolean} True if the spot is valid
+ * Check if a grid position is valid for token placement
+ * @param {number} gridX - Grid X coordinate
+ * @param {number} gridY - Grid Y coordinate
+ * @param {Object} tokenData - Token data
+ * @param {Set} assignedSpots - Already assigned positions
+ * @returns {boolean} True if valid
  */
 function isSpotValid(gridX, gridY, tokenData, assignedSpots) {
   const gridSize = canvas.grid.size;
+  const tokenWidth = tokenData.width || 1;
+  const tokenHeight = tokenData.height || 1;
+  
+  // Check if already assigned
+  if (assignedSpots.has(`${gridX},${gridY}`)) {
+    return false;
+  }
+  
+  // Check walls (use center point of token)
+  const centerX = (gridX + tokenWidth / 2) * gridSize;
+  const centerY = (gridY + tokenHeight / 2) * gridSize;
+  
+  if (hasWallCollision(centerX, centerY, tokenWidth, tokenHeight)) {
+    return false;
+  }
+  
+  // Check overlap with existing tokens
   const finalX = gridX * gridSize;
   const finalY = gridY * gridSize;
   
-  if (assignedSpots.has(`${gridX},${gridY}`)) return false;
+  const tokenRect = {
+    x: finalX,
+    y: finalY,
+    width: tokenWidth * gridSize,
+    height: tokenHeight * gridSize
+  };
   
-  const tokenWidth = tokenData.width * gridSize;
-  const tokenHeight = tokenData.height * gridSize;
-  const centerX = finalX + (tokenWidth / 2);
-  const centerY = finalY + (tokenHeight / 2);
-  
-  // Check for wall collisions using v13 API
-  // Test multiple points around the token to ensure it doesn't pass through walls
-  const testPoints = [
-    { x: centerX, y: centerY },                                                         // Center
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },                     // Top-left corner
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + WALL_COLLISION_TEST_OFFSET },        // Top-right corner
-    { x: finalX + WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET },       // Bottom-left corner
-    { x: finalX + tokenWidth - WALL_COLLISION_TEST_OFFSET, y: finalY + tokenHeight - WALL_COLLISION_TEST_OFFSET } // Bottom-right corner
-  ];
-  
-  // Foundry v13: Check walls manually using line segment intersection
-  for (const point of testPoints) {
-    // Create a tiny test line to check if point is inside a wall
-    const testOrigin = { x: point.x - 1, y: point.y - 1 };
-    const testDest = { x: point.x + 1, y: point.y + 1 };
-    
-    // Check against all walls that block movement
-    for (const wall of canvas.walls.placeables) {
-      // In v13, check the movement property (WALL_MOVEMENT_TYPES)
-      const wallMovement = wall.document.move ?? CONST.WALL_MOVEMENT_TYPES.NORMAL;
-      if (wallMovement === CONST.WALL_MOVEMENT_TYPES.NONE) continue;
-      
-      // Get wall endpoints
-      const wallCoords = wall.document.c;
-      const wallA = { x: wallCoords[0], y: wallCoords[1] };
-      const wallB = { x: wallCoords[2], y: wallCoords[3] };
-      
-      // Check if test line intersects this wall
-      if (foundry.utils.lineSegmentIntersects(testOrigin, testDest, wallA, wallB)) {
-        return false; // Wall blocks this position
-      }
-    }
-  }
-  
-  // Check for existing token overlaps
   for (const token of canvas.tokens.placeables) {
-    const tokenRect = {
-      x: token.x, 
+    const otherRect = {
+      x: token.x,
       y: token.y,
-      width: token.document.width * gridSize, 
-      height: token.document.height * gridSize
-    };
-    const newRect = {
-      x: finalX, 
-      y: finalY,
-      width: tokenWidth, 
-      height: tokenHeight
+      width: token.w,
+      height: token.h
     };
     
-    if (tokenRect.x < newRect.x + newRect.width &&
-        tokenRect.x + tokenRect.width > newRect.x &&
-        tokenRect.y < newRect.y + newRect.height &&
-        tokenRect.y + tokenRect.height > newRect.y) {
+    if (rectanglesOverlap(tokenRect, otherRect)) {
       return false;
     }
   }
   
   return true;
 }
+
+/**
+ * Check if rectangles overlap
+ */
+function rectanglesOverlap(rect1, rect2) {
+  return rect1.x < rect2.x + rect2.width &&
+         rect1.x + rect1.width > rect2.x &&
+         rect1.y < rect2.y + rect2.height &&
+         rect1.y + rect1.height > rect2.y;
+}
+
+/**
+ * Check for wall collisions at a position
+ * @param {number} centerX - Center X in pixels
+ * @param {number} centerY - Center Y in pixels
+ * @param {number} widthGrids - Token width in grid units
+ * @param {number} heightGrids - Token height in grid units
+ * @returns {boolean} True if collision detected
+ */
+function hasWallCollision(centerX, centerY, widthGrids, heightGrids) {
+  if (!canvas.walls) return false;
+  
+  const gridSize = canvas.grid.size;
+  const halfWidth = (widthGrids * gridSize) / 2;
+  const halfHeight = (heightGrids * gridSize) / 2;
+  
+  // Check corners of the token
+  const corners = [
+    { x: centerX - halfWidth + WALL_COLLISION_TEST_OFFSET, y: centerY - halfHeight + WALL_COLLISION_TEST_OFFSET },
+    { x: centerX + halfWidth - WALL_COLLISION_TEST_OFFSET, y: centerY - halfHeight + WALL_COLLISION_TEST_OFFSET },
+    { x: centerX - halfWidth + WALL_COLLISION_TEST_OFFSET, y: centerY + halfHeight - WALL_COLLISION_TEST_OFFSET },
+    { x: centerX + halfWidth - WALL_COLLISION_TEST_OFFSET, y: centerY + halfHeight - WALL_COLLISION_TEST_OFFSET }
+  ];
+  
+  for (const corner of corners) {
+    const walls = canvas.walls.checkCollision(
+      new Ray({ x: centerX, y: centerY }, corner),
+      { type: 'move', mode: 'any' }
+    );
+    
+    if (walls) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// ==============================================
+// SPLIT PARTY SYSTEM
+// ==============================================
+
+/**
+ * Shows the split party dialog to select which members to deploy or create a new party
+ * @param {Token} partyToken - The party token to split
+ * @returns {Promise<void>}
+ */
+async function showSplitPartyDialog(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn("This is not a valid Party Token.");
+    return;
+  }
+
+  // If only one member, just deploy normally
+  if (memberData.length === 1) {
+    await deployParty(partyToken, 'north', false);
+    return;
+  }
+
+  // Build member selection checkboxes
+  const memberCheckboxes = memberData.map((member, index) => {
+    const isLeader = member.isLeader ? ' <span style="color: #00ff88;">(Leader)</span>' : '';
+    return `
+      <div class="member-checkbox" style="padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" name="member-${index}" checked style="margin-right: 12px; transform: scale(1.2);">
+          <img src="${member.img}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
+          <span style="color: #ddd;">${member.name}${isLeader}</span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  new Dialog({
+    title: "Split Party",
+    content: `
+      <style>
+        .split-dialog {
+          padding: 15px;
+          font-family: "Signika", sans-serif;
+        }
+        .split-dialog h3 {
+          margin: 0 0 12px 0;
+          color: #ddd;
+          font-size: 1.1em;
+          border-bottom: 2px solid #00ff88;
+          padding-bottom: 8px;
+        }
+        .split-dialog .info-text {
+          font-size: 0.85em;
+          color: #aaa;
+          margin: 8px 0 12px 0;
+          font-style: italic;
+        }
+      </style>
+      <div class="split-dialog">
+        <h3>Select Members to Deploy</h3>
+        <p class="info-text">
+          <i class="fas fa-info-circle"></i> Choose which members to separate. Unchecked members will form a new party.
+        </p>
+        ${memberCheckboxes}
+      </div>
+    `,
+    buttons: {
+      deploy: {
+        label: '<i class="fas fa-user-minus"></i> Deploy Selected',
+        callback: async (html) => {
+          const selected = [];
+          const remaining = [];
+          
+          memberData.forEach((member, index) => {
+            if (html.find(`input[name="member-${index}"]`).is(':checked')) {
+              selected.push(member);
+            } else {
+              remaining.push(member);
+            }
+          });
+          
+          await splitAndDeployMembers(partyToken, selected, remaining);
+        }
+      },
+      cancel: {
+        label: '<i class="fas fa-times"></i> Cancel',
+        callback: () => {}
+      }
+    },
+    default: "deploy"
+  }, {
+    width: 400,
+    classes: ["dialog", "party-vision-dialog"]
+  }).render(true);
+}
+
+/**
+ * Split party and deploy selected members
+ * @param {Token} partyToken - The party token
+ * @param {Array} selectedMembers - Members to deploy
+ * @param {Array} remainingMembers - Members to keep in party
+ */
+async function splitAndDeployMembers(partyToken, selectedMembers, remainingMembers) {
+  if (selectedMembers.length === 0) {
+    ui.notifications.warn("No members selected to deploy.");
+    return;
+  }
+  
+  const gridSize = canvas.grid.size;
+  const partyCenterX = partyToken.x + (partyToken.document.width * gridSize / 2);
+  const partyCenterY = partyToken.y + (partyToken.document.height * gridSize / 2);
+  
+  // Deploy selected members
+  const newTokensData = [];
+  for (const member of selectedMembers) {
+    let actor;
+    if (member.actorUuid) {
+      try {
+        actor = await fromUuid(member.actorUuid);
+      } catch (e) {
+        console.warn(`Party Vision | Could not resolve UUID ${member.actorUuid}`);
+      }
+    }
+    
+    if (!actor) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) {
+      console.warn(`Party Vision | Actor not found for ${member.name}`);
+      continue;
+    }
+    
+    const protoToken = actor.prototypeToken;
+    const tokenData = protoToken.toObject();
+    
+    // Place at party center
+    const newToken = {
+      ...tokenData,
+      x: partyCenterX - (tokenData.width * gridSize / 2),
+      y: partyCenterY - (tokenData.height * gridSize / 2),
+      actorId: actor.id,
+      actorLink: protoToken.actorLink,
+      name: protoToken.name || actor.name,
+      img: protoToken.texture?.src || actor.img
+    };
+    
+    // Restore lighting
+    if (member.originalLight) {
+      newToken.light = member.originalLight;
+    }
+    
+    delete newToken.actorData;
+    delete newToken.delta;
+    
+    newTokensData.push(newToken);
+  }
+  
+  await canvas.scene.createEmbeddedDocuments("Token", newTokensData);
+  
+  // Handle remaining members
+  if (remainingMembers.length > 0) {
+    // Update party token with remaining members
+    await partyToken.document.setFlag('party-vision', 'memberData', remainingMembers);
+    await updatePartyLightingFromActors(partyToken);
+    ui.notifications.info(`Deployed ${selectedMembers.length} members. ${remainingMembers.length} remain in party.`);
+  } else {
+    // No members left, delete party token
+    await canvas.scene.deleteEmbeddedDocuments("Token", [partyToken.id]);
+    ui.notifications.info(`Deployed all ${selectedMembers.length} members.`);
+  }
+}
+
+// ==============================================
+// LIGHTING SYNCHRONIZATION
+// ==============================================
+
+/**
+ * Update party token lighting based on member actors
+ * @param {Token} partyToken - The party token
+ */
+async function updatePartyLightingFromActors(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) return;
+  
+  let brightestLight = { bright: 0, dim: 0, color: null, alpha: 0.5, angle: 360, animation: {} };
+  
+  for (const member of memberData) {
+    let actor;
+    try {
+      actor = await fromUuid(member.actorUuid);
+    } catch (e) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) continue;
+    
+    // Get actor's light settings (check multiple possible locations)
+    let actorLight = null;
+    
+    // Try prototype token light
+    if (actor.prototypeToken?.light) {
+      actorLight = actor.prototypeToken.light;
+    }
+    
+    // Try active effects for light
+    if (!actorLight || (actorLight.bright === 0 && actorLight.dim === 0)) {
+      const lightEffect = actor.effects.find(e => 
+        e.changes.some(c => c.key === 'light.bright' || c.key === 'ATL.light.bright')
+      );
+      
+      if (lightEffect) {
+        actorLight = {
+          bright: lightEffect.changes.find(c => c.key === 'light.bright' || c.key === 'ATL.light.bright')?.value || 0,
+          dim: lightEffect.changes.find(c => c.key === 'light.dim' || c.key === 'ATL.light.dim')?.value || 0,
+          color: lightEffect.changes.find(c => c.key === 'light.color' || c.key === 'ATL.light.color')?.value || null,
+          alpha: lightEffect.changes.find(c => c.key === 'light.alpha' || c.key === 'ATL.light.alpha')?.value || 0.5,
+          angle: 360,
+          animation: {}
+        };
+      }
+    }
+    
+    if (!actorLight) continue;
+    
+    // Compare total light radius
+    const currentRadius = actorLight.bright + actorLight.dim;
+    const bestRadius = brightestLight.bright + brightestLight.dim;
+    
+    if (currentRadius > bestRadius) {
+      brightestLight = {
+        bright: actorLight.bright || 0,
+        dim: actorLight.dim || 0,
+        color: actorLight.color || null,
+        alpha: actorLight.alpha || 0.5,
+        angle: actorLight.angle || 360,
+        animation: actorLight.animation || {}
+      };
+    }
+  }
+  
+  // Update party token lighting
+  await partyToken.document.update({ light: brightestLight });
+}
+
+/**
+ * Update party lighting (debounced)
+ * @param {Token} partyToken - The party token
+ */
+function updatePartyLighting(partyToken) {
+  // Cancel pending update
+  if (pendingLightingUpdates.has(partyToken.id)) {
+    clearTimeout(pendingLightingUpdates.get(partyToken.id));
+  }
+  
+  // Schedule new update
+  const timeoutId = setTimeout(async () => {
+    await updatePartyLightingFromActors(partyToken);
+    pendingLightingUpdates.delete(partyToken.id);
+  }, LIGHTING_UPDATE_DEBOUNCE_MS);
+  
+  pendingLightingUpdates.set(partyToken.id, timeoutId);
+}
+
+/**
+ * Cycle through available light sources in the party
+ * @param {Token} partyToken - The party token
+ */
+async function cycleLightSource(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData) return;
+  
+  // Get all members with light sources
+  const membersWithLight = [];
+  for (const member of memberData) {
+    let actor;
+    try {
+      actor = await fromUuid(member.actorUuid);
+    } catch (e) {
+      actor = game.actors.get(member.actorId);
+    }
+    
+    if (!actor) continue;
+    
+    let hasLight = false;
+    let lightData = null;
+    
+    // Check prototype token
+    if (actor.prototypeToken?.light?.bright > 0 || actor.prototypeToken?.light?.dim > 0) {
+      hasLight = true;
+      lightData = actor.prototypeToken.light;
+    }
+    
+    // Check active effects
+    if (!hasLight) {
+      const lightEffect = actor.effects.find(e => 
+        e.changes.some(c => c.key === 'light.bright' || c.key === 'ATL.light.bright')
+      );
+      
+      if (lightEffect) {
+        hasLight = true;
+        lightData = {
+          bright: lightEffect.changes.find(c => c.key === 'light.bright' || c.key === 'ATL.light.bright')?.value || 0,
+          dim: lightEffect.changes.find(c => c.key === 'light.dim' || c.key === 'ATL.light.dim')?.value || 0
+        };
+      }
+    }
+    
+    if (hasLight) {
+      membersWithLight.push({
+        name: actor.name,
+        light: lightData
+      });
+    }
+  }
+  
+  if (membersWithLight.length === 0) {
+    ui.notifications.info("No party members have light sources.");
+    return;
+  }
+  
+  // Find current light source
+  const currentLight = partyToken.document.light;
+  let currentIndex = membersWithLight.findIndex(m => 
+    m.light.bright === currentLight.bright && m.light.dim === currentLight.dim
+  );
+  
+  // Cycle to next
+  currentIndex = (currentIndex + 1) % membersWithLight.length;
+  const newSource = membersWithLight[currentIndex];
+  
+  await partyToken.document.update({ light: newSource.light });
+  ui.notifications.info(`Switched to ${newSource.name}'s light source`);
+}
+
+// ==============================================
+// FOLLOW-THE-LEADER MODE
+// ==============================================
+
+/**
+ * Toggle follow-the-leader mode
+ */
+function toggleFollowLeaderMode() {
+  const controlled = canvas.tokens.controlled;
+  
+  if (controlled.length < 2) {
+    ui.notifications.warn("Select at least 2 tokens to enable Follow-the-Leader mode.");
+    return;
+  }
+  
+  if (followLeaderMode) {
+    // Disable mode
+    followLeaderMode = false;
+    leaderToken = null;
+    followerOffsets.clear();
+    ui.notifications.info("Follow-the-Leader mode disabled.");
+  } else {
+    // Enable mode
+    followLeaderMode = true;
+    leaderToken = controlled[0];
+    followerOffsets.clear();
+    
+    // Store grid offsets for each follower
+    const gridSize = canvas.grid.size;
+    const leaderGridX = leaderToken.x / gridSize;
+    const leaderGridY = leaderToken.y / gridSize;
+    
+    for (let i = 1; i < controlled.length; i++) {
+      const follower = controlled[i];
+      const followerGridX = follower.x / gridSize;
+      const followerGridY = follower.y / gridSize;
+      
+      followerOffsets.set(follower.id, {
+        dx: followerGridX - leaderGridX,
+        dy: followerGridY - leaderGridY
+      });
+    }
+    
+    ui.notifications.info(`Follow-the-Leader mode enabled. ${leaderToken.name} is the leader.`);
+  }
+}
+
+// Hook for token updates to maintain formation
+Hooks.on('updateToken', (tokenDoc, change, options, userId) => {
+  if (!followLeaderMode || !leaderToken) return;
+  if (tokenDoc.id !== leaderToken.id) return;
+  if (!change.x && !change.y) return;
+  
+  // Leader moved, update followers
+  const gridSize = canvas.grid.size;
+  const leaderGridX = leaderToken.x / gridSize;
+  const leaderGridY = leaderToken.y / gridSize;
+  
+  for (const [followerId, offset] of followerOffsets.entries()) {
+    const follower = canvas.tokens.get(followerId);
+    if (!follower) continue;
+    
+    const newGridX = leaderGridX + offset.dx;
+    const newGridY = leaderGridY + offset.dy;
+    const newX = newGridX * gridSize;
+    const newY = newGridY * gridSize;
+    
+    // Check for wall collisions
+    if (!hasWallCollision(newX + follower.w / 2, newY + follower.h / 2, follower.document.width, follower.document.height)) {
+      follower.document.update({ x: newX, y: newY }, { animate: false });
+    }
+  }
+});
+
+// ==============================================
+// COMBAT INTEGRATION
+// ==============================================
+
+// Auto-deploy when adding party tokens to combat
+Hooks.on('createCombatant', async (combatant, options, userId) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get('party-vision', 'autoDeployOnCombat')) return;
+  
+  const tokenDoc = combatant.token;
+  if (!tokenDoc) return;
+  
+  const memberData = tokenDoc.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+  
+  const partyToken = canvas.tokens.get(tokenDoc.id);
+  if (!partyToken) return;
+  
+  // CRITICAL FIX: Wait for combat to fully initialize
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  console.log('Party Vision | Party token added to combat - showing deploy dialog');
+  ui.notifications.info(`Added party to combat`);
+  
+  try {
+    await showDeployDialog(partyToken);
+  } catch (error) {
+    console.error('Party Vision | Auto-deploy failed:', error);
+    ui.notifications.warn('Party Vision: Auto-deploy failed, deploy manually');
+  }
+});
+
+// Auto-form when combat ends
+Hooks.on('deleteCombat', async (combat, options, userId) => {
+  if (!game.user.isGM) return;
+  if (!game.settings.get('party-vision', 'autoFormOnCombatEnd')) return;
+  
+  // Get all tokens that were in combat
+  const combatantTokens = combat.combatants.map(c => canvas.tokens.get(c.tokenId)).filter(t => t);
+  
+  // Check if we should auto-form
+  if (combatantTokens.length >= 2) {
+    // Select the tokens
+    combatantTokens.forEach(t => t.control({ releaseOthers: false }));
+    
+    // Show form dialog
+    ui.notifications.info("Combat ended. Form party?");
+    
+    // Auto-show form dialog after a delay
+    setTimeout(() => {
+      if (window.PartyVision && window.PartyVision.showFormPartyDialog) {
+        window.PartyVision.showFormPartyDialog();
+      }
+    }, 1000);
+  }
+});
+
+// ==============================================
+// ACTOR HOOKS - LIGHTING UPDATES
+// ==============================================
+
+// Update party lighting when actor light changes
+Hooks.on('updateActor', (actor, change, options, userId) => {
+  // Check if light was changed
+  if (!change.prototypeToken?.light) return;
+  
+  // Find party tokens containing this actor
+  canvas.tokens.placeables.forEach(token => {
+    const memberData = token.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return;
+    
+    const hasMember = memberData.some(m => m.actorId === actor.id);
+    if (hasMember) {
+      updatePartyLighting(token);
+    }
+  });
+});
+
+// Update party lighting when active effect changes
+Hooks.on('createActiveEffect', (effect, options, userId) => {
+  const actor = effect.parent;
+  if (!actor) return;
+  
+  // Check if effect modifies light
+  const modifiesLight = effect.changes.some(c => 
+    c.key.includes('light') || c.key.includes('ATL')
+  );
+  
+  if (!modifiesLight) return;
+  
+  // Find party tokens containing this actor
+  canvas.tokens.placeables.forEach(token => {
+    const memberData = token.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return;
+    
+    const hasMember = memberData.some(m => m.actorId === actor.id);
+    if (hasMember) {
+      updatePartyLighting(token);
+    }
+  });
+});
+
+Hooks.on('deleteActiveEffect', (effect, options, userId) => {
+  const actor = effect.parent;
+  if (!actor) return;
+  
+  // Check if effect modified light
+  const modifiedLight = effect.changes.some(c => 
+    c.key.includes('light') || c.key.includes('ATL')
+  );
+  
+  if (!modifiedLight) return;
+  
+  // Find party tokens containing this actor
+  canvas.tokens.placeables.forEach(token => {
+    const memberData = token.document.getFlag('party-vision', 'memberData');
+    if (!memberData) return;
+    
+    const hasMember = memberData.some(m => m.actorId === actor.id);
+    if (hasMember) {
+      updatePartyLighting(token);
+    }
+  });
+});
+
+// ==============================================
+// UTILITY FUNCTIONS
+// ==============================================
 
 /**
  * Determine which direction is "forward" based on the leader's position relative to the group
@@ -2913,20 +1873,32 @@ function determineNaturalFacingFromOffsets(dx, dy) {
   }
 }
 
-// Export for use by macros
+// ==============================================
+// PUBLIC API EXPORTS
+// ==============================================
+
+// Export for use by macros and other modules
 window.PartyVision = {
+  // Core functions
+  showFormPartyDialog,
+  formParty,
+  showDeployDialog,
   deployParty,
   showSplitPartyDialog,
   splitAndDeployMembers,
+  
+  // Lighting functions
   updatePartyLighting,
   updatePartyLightingFromActors,
   cycleLightSource,
+  
+  // Follow-the-leader
+  toggleFollowLeaderMode,
+  
+  // Formations
   FORMATION_PRESETS,
   
-  /**
-   * Manually refresh lighting for all party tokens on the scene
-   * Useful for debugging or if automatic updates aren't working
-   */
+  // Utility
   refreshAllPartyLighting: async function() {
     const partyTokens = canvas.tokens.placeables.filter(t => {
       const memberData = t.document.getFlag('party-vision', 'memberData');

@@ -2,7 +2,7 @@
   "id": "party-vision",
   "title": "Party Vision",
   "description": "Creates a single party token that uses the individual vision of its members, with movement restrictions, speed calculations, follow-the-leader mode, auto-deploy, formation presets, and visual indicators.",
-  "version": "2.4.3",
+  "version": "2.4.5",
   "authors": [
     {
       "name": "jhutc82",
@@ -16,7 +16,7 @@
   "relationships": {
     "requires": [
       {
-        "id": "lib-wrapper",
+        "id": "libwrapper",
         "type": "module",
         "compatibility": {
           "minimum": "1.0.0.0"
@@ -31,18 +31,9 @@
   "styles": [
     "styles/party-vision.css"
   ],
-  "packs": [
-    {
-      "name": "macros",
-      "label": "Party Vision Macros",
-      "type": "Macro",
-      "path": "packs/macros.db",
-      "private": false
-    }
-  ],
   "url": "https://github.com/jhutc82/party-vision",
   "manifest": "https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.json",
-  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/v2.4.3.zip",
+  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/v2.4.5.zip",
   "license": "MIT",
   "readme": "https://github.com/jhutc82/party-vision/blob/main/README.md",
   "bugs": "https://github.com/jhutc82/party-vision/issues",
