@@ -1,5 +1,6 @@
 /* ==============================================
    PARTY VISION - STYLES
+   Version 2.4.6 - Enhanced with proper dialog styling
    ============================================== */
 
 /* Token HUD Button Styles */
@@ -18,9 +19,36 @@
   box-shadow: 0 0 10px rgba(255, 100, 100, 0.5);
 }
 
-/* Dialog Styles */
+/* Dialog Styles - Override any white text on dark backgrounds */
 .party-vision-dialog {
   min-width: 500px;
+}
+
+.party-vision-dialog .window-content {
+  background: rgba(30, 30, 30, 0.95);
+  color: #ddd;
+}
+
+.party-vision-dialog h2,
+.party-vision-dialog h3 {
+  color: #ddd;
+}
+
+.party-vision-dialog label {
+  color: #ddd !important;
+}
+
+.party-vision-dialog input[type="text"],
+.party-vision-dialog input[type="number"],
+.party-vision-dialog select,
+.party-vision-dialog textarea {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #555;
+  color: #ddd;
+}
+
+.party-vision-dialog button {
+  color: #fff;
 }
 
 /* Form Party Dialog - Wider and responsive */
@@ -60,8 +88,7 @@
   font-weight: bold;
   margin-bottom: 8px;
   font-size: 15px;
-  color: #000000;
-  text-shadow: 0 0 1px rgba(255, 255, 255, 0.5);
+  color: #ddd !important;
 }
 
 .pv-form-party .form-group input[type="text"],
@@ -70,9 +97,9 @@
   padding: 10px 12px;
   font-size: 14px;
   line-height: 1.5;
-  border: 1px solid #999;
-  background: #ffffff;
-  color: #000000;
+  border: 1px solid #666;
+  background: rgba(0, 0, 0, 0.4);
+  color: #ddd;
   border-radius: 3px;
   min-height: 42px;
   box-sizing: border-box;
@@ -81,10 +108,11 @@
 .pv-form-party .form-group select {
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ddd' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   background-size: 12px;
+  background-color: rgba(0, 0, 0, 0.4);
   padding-right: 36px;
   height: auto;
   min-width: 250px;
@@ -99,6 +127,8 @@
   line-height: 1.5;
   white-space: normal;
   overflow: visible;
+  background: #222;
+  color: #ddd;
 }
 
 .pv-form-party .form-group input[type="text"]:focus,
@@ -124,9 +154,9 @@
 .pv-image-preview {
   width: 64px;
   height: 64px;
-  border: 2px solid #999;
+  border: 2px solid #666;
   border-radius: 4px;
-  background: #ffffff;
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -199,7 +229,7 @@
 
 .pv-form-party .help-text {
   font-size: 12px;
-  color: #666666;
+  color: #aaa;
   margin-top: 6px;
   line-height: 1.4;
   font-style: italic;
@@ -207,7 +237,7 @@
 
 .pv-form-party .section-divider {
   height: 1px;
-  background: linear-gradient(to right, transparent, #cccccc, transparent);
+  background: linear-gradient(to right, transparent, #555, transparent);
   margin: 25px 0;
 }
 
@@ -221,12 +251,13 @@
 
 .party-vision-dialog .formation-option {
   padding: 10px;
-  border: 2px solid #444;
+  border: 2px solid #666;
   border-radius: 5px;
   cursor: pointer;
   text-align: center;
   min-width: 80px;
   transition: all 0.2s ease;
+  color: #ddd;
 }
 
 .party-vision-dialog .formation-option:hover {
@@ -249,7 +280,7 @@
 
 .party-vision-dialog .direction-btn {
   padding: 15px;
-  border: 2px solid #444;
+  border: 2px solid #666;
   border-radius: 5px;
   cursor: pointer;
   text-align: center;
@@ -274,6 +305,7 @@
 
 .party-vision-dialog .direction-btn i {
   font-size: 24px;
+  color: #ddd;
 }
 
 /* Member Portrait Container */
@@ -290,7 +322,7 @@
 /* Settings Hint */
 .party-vision-settings-hint {
   font-style: italic;
-  color: #999;
+  color: #aaa;
   font-size: 0.9em;
   margin-top: 5px;
 }
@@ -303,6 +335,8 @@
 .party-vision-split-dialog .window-content {
   max-height: 600px;
   overflow-y: auto;
+  background: rgba(30, 30, 30, 0.95);
+  color: #ddd;
 }
 
 .party-vision-split-dialog .member-list::-webkit-scrollbar {
@@ -352,3 +386,32 @@
   transform: translateY(0);
 }
 
+/* Ensure all form elements have good contrast */
+.form-party-dialog label,
+.deploy-party-dialog label,
+.split-party-dialog label {
+  color: #ddd !important;
+}
+
+.form-party-dialog .info-text,
+.deploy-party-dialog .info-text,
+.split-party-dialog .info-text {
+  color: #aaa !important;
+}
+
+.form-party-dialog h3,
+.deploy-party-dialog h3,
+.split-party-dialog h3 {
+  color: #ddd !important;
+}
+
+/* Party member list items */
+.party-member,
+.member-checkbox {
+  color: #ddd;
+}
+
+.party-member label,
+.member-checkbox label {
+  color: #ddd !important;
+}
