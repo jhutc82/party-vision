@@ -5,6 +5,20 @@ All notable changes to the Party Vision module will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] - 2025-10-31
+
+### Fixed
+- **Split Party Dialog Integration**: Fixed right-click context menu to show the modern split party dialog
+  - Context menu now calls `showSplitPartyDialog()` instead of deprecated `splitPartyDialog()`
+  - Ensures consistent split party experience across all access points
+  - Users now see the improved dialog with member images, leader highlighting, and dual deployment options
+
+### Removed
+- **Deprecated Functions**: Removed old split party implementation functions
+  - Removed `splitPartyDialog()` - replaced by `showSplitPartyDialog()`
+  - Removed `splitParty()` - replaced by `splitAndDeployMembers()`
+  - Cleaner codebase with single, superior implementation
+
 ## [2.4.0] - 2025-10-30
 
 ### Added

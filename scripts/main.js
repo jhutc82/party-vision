@@ -686,7 +686,7 @@ Hooks.on('getTokenContextOptions', (html, contextOptions) => {
       name: "Split Party",
       icon: '<i class="fas fa-users-cog"></i>',
       condition: () => memberData && memberData.length > 1,
-      callback: () => splitPartyDialog(token)
+      callback: () => showSplitPartyDialog(token)
     });
   }
   
@@ -963,185 +963,13 @@ async function removeMember(partyToken, actorId) {
   partyToken.refresh();
 }
 
-async function splitPartyDialog(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  if (memberData.length < 2) {
-    ui.notifications.warn("Need at least 2 members to split the party.");
-    return;
-  }
-  
-  const checkboxes = memberData.map((m, index) => {
-    const actor = game.actors.get(m.actorId);
-    return `
-      <div style="padding: 5px 0;">
-        <label style="display: flex; align-items: center; cursor: pointer;">
-          <input type="checkbox" class="split-member" value="${index}" style="margin-right: 10px;">
-          <span>${actor?.name || 'Unknown'}</span>
-        </label>
-      </div>
-    `;
-  }).join('');
-  
-  new Dialog({
-    title: "Split Party",
-    content: `
-      <div style="padding: 10px;">
-        <p><strong>Select members to split into a new party:</strong></p>
-        <p style="font-size: 0.9em; color: #999; margin-bottom: 15px;">
-          Selected members will form a new party token.
-          Remaining members will stay in the current party.
-        </p>
-        <div style="max-height: 300px; overflow-y: auto; border: 1px solid #444; padding: 10px; border-radius: 3px;">
-          ${checkboxes}
-        </div>
-      </div>
-    `,
-    buttons: {
-      split: {
-        label: "Split Party",
-        callback: async (html) => {
-          const selected = [];
-          html.find('.split-member:checked').each(function() {
-            selected.push(parseInt($(this).val()));
-          });
-          
-          if (selected.length === 0) {
-            ui.notifications.warn("Please select at least one member to split off.");
-            return;
-          }
-          
-          if (selected.length === memberData.length) {
-            ui.notifications.warn("Cannot split all members. Leave at least one in the original party.");
-            return;
-          }
-          
-          await splitParty(partyToken, selected);
-        }
-      },
-      cancel: { label: "Cancel" }
-    },
-    default: "split",
-    render: (html) => {
-      // Add "Select All" / "Select None" helpers
-      html.find('.dialog-content').prepend(`
-        <div style="margin-bottom: 10px; padding: 5px; background: rgba(0,0,0,0.2); border-radius: 3px;">
-          <button type="button" id="select-all" style="margin-right: 5px;">Select All</button>
-          <button type="button" id="select-none">Select None</button>
-        </div>
-      `);
-      
-      html.find('#select-all').on('click', () => {
-        html.find('.split-member').prop('checked', true);
-      });
-      
-      html.find('#select-none').on('click', () => {
-        html.find('.split-member').prop('checked', false);
-      });
-    }
-  }).render(true);
-}
-
-async function splitParty(partyToken, selectedIndices) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  
-  // Split members into two groups
-  const splitMembers = [];
-  const remainingMembers = [];
-  
-  memberData.forEach((member, index) => {
-    if (selectedIndices.includes(index)) {
-      splitMembers.push(member);
-    } else {
-      remainingMembers.push(member);
-    }
-  });
-  
-  if (remainingMembers.length === 0 || splitMembers.length === 0) {
-    ui.notifications.error("Invalid split - each party needs at least one member.");
-    return;
-  }
-  
-  // Calculate center of split members (relative to current party token)
-  let splitCenterX = 0;
-  let splitCenterY = 0;
-  splitMembers.forEach(m => {
-    splitCenterX += m.dx;
-    splitCenterY += m.dy;
-  });
-  splitCenterX /= splitMembers.length;
-  splitCenterY /= splitMembers.length;
-  
-  // Recalculate positions relative to new center
-  const recenteredSplitMembers = splitMembers.map(m => ({
-    ...m,
-    dx: Math.round(m.dx - splitCenterX),
-    dy: Math.round(m.dy - splitCenterY)
-  }));
-  
-  // Create new party token for split group
-  const gridSize = canvas.grid.size;
-  const offset = gridSize * 2; // Offset new party by 2 grid squares
-  
-  // Get max dimensions from split members
-  let maxWidth = 1;
-  let maxHeight = 1;
-  for (const member of splitMembers) {
-    const actor = game.actors.get(member.actorId);
-    if (actor?.prototypeToken) {
-      if (actor.prototypeToken.width > maxWidth) maxWidth = actor.prototypeToken.width;
-      if (actor.prototypeToken.height > maxHeight) maxHeight = actor.prototypeToken.height;
-    }
-  }
-  
-  const newPartyData = {
-    name: "Split Party",
-    x: partyToken.x + offset,
-    y: partyToken.y + offset,
-    texture: { src: "icons/svg/users.svg" },
-    width: maxWidth,
-    height: maxHeight,
-    sight: {
-      enabled: true,
-      range: 0,
-      angle: 360,
-      visionMode: "basic"
-    },
-    displayName: CONST.TOKEN_DISPLAY_MODES.ALWAYS,
-    actorLink: false,
-    disposition: CONST.TOKEN_DISPOSITIONS.FRIENDLY,
-    ring: {
-      enabled: false
-    },
-    ownership: {
-      default: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
-      ...Object.fromEntries(
-        recenteredSplitMembers
-          .map(m => game.actors.get(m.actorId))
-          .filter(a => a)
-          .flatMap(a => 
-            Object.entries(a.ownership || {})
-              .filter(([userId, level]) => level >= CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER)
-          )
-      )
-    },
-    flags: {
-      "party-vision": {
-        "memberData": recenteredSplitMembers,
-        "naturalFacing": partyToken.document.getFlag('party-vision', 'naturalFacing') || (-Math.PI / 2)
-      }
-    }
-  };
-  
-  // Create new party token
-  await canvas.scene.createEmbeddedDocuments("Token", [newPartyData]);
-  
-  // Update original party with remaining members
-  await partyToken.document.setFlag('party-vision', 'memberData', remainingMembers);
-  
-  ui.notifications.info(`Party split! ${splitMembers.length} members in new party, ${remainingMembers.length} remaining.`);
-  partyToken.refresh();
-}
+// ==============================================
+// DEPRECATED FUNCTIONS REMOVED IN v2.4.2
+// ==============================================
+// The following functions were removed as they have been replaced by better implementations:
+// - splitPartyDialog() -> replaced by showSplitPartyDialog() (line ~2179)
+// - splitParty() -> replaced by splitAndDeployMembers() (line ~2344)
+// These new functions provide better UX with styled dialogs, member images, and more options.
 
 async function addToParty(token, partyToken) {
   if (!token.actor) {
