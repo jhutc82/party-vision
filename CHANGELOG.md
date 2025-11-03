@@ -2,6 +2,42 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.5.1] - 2025-11-03
+
+### Added
+
+**Movement Type Selector**
+- Party tokens now properly support the "Select Movement Action" dropdown in the Token HUD
+- Shows only movement types that ALL party members have in common
+- Defaults to system-appropriate movement type:
+  - **PF2e**: "land" (Travel mode)
+  - **D&D 5e**: "walk"
+- Movement data stored in token's actorData for proper HUD integration
+
+### Changed
+- **Compact Deploy Dialog**: Significantly reduced the size of the deployment menu to take up less screen space
+  - Reduced padding and margins throughout (15px → 8px)
+  - Smaller heading sizes and tighter spacing
+  - Direction grid reduced from 240px to 150px with smaller arrow icons (28px → 18px)
+  - Member list max height reduced from 300px to 200px
+  - Member items more compact with smaller portraits (32px → 24px)
+  - Smaller buttons and controls throughout the dialog
+  - All functionality preserved while reducing overall screen footprint by approximately 40%
+
+### Fixed
+- **Health Indicator Real-Time Updates**: Health bars now update instantly when actor HP changes, without needing to click the token
+- **Passive Perception Tooltip**: Fixed accumulating "| PP: X" text that would append multiple times on hover
+- **Double-Click Actor Sheet**: Prevented party token's own actor sheet from trying to open (and failing) when double-clicking
+- **Light Cycling**: Fixed right-click light cycling to properly go from brightest → next brightest → ... → off → brightest
+
+### Technical Improvements
+- Added `getDefaultMovementType()` helper for system-specific defaults
+- Enhanced `updateActor` hook to detect HP changes and refresh health indicators
+- Enhanced `updateToken` hook to handle HP changes for unlinked tokens
+- Added `actorData` to party token creation with proper system-specific movement structure
+- Improved tooltip management with original text storage and restoration
+- Better double-click event handling with timestamp tracking to prevent unwanted sheet openings
+
 ## [2.5.0] - 2025-11-03
 
 ### Added - Player-Friendly Enhancements

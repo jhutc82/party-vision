@@ -1,6 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
-// Version 2.5.0 - Player-Friendly Enhancements
+// Version 2.5.1 - Movement Type Selector
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -34,7 +34,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.5.0');
+  console.log('Party Vision | Initializing Enhanced Module v2.5.1');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -199,6 +199,15 @@ Hooks.once('init', () => {
   game.settings.register('party-vision', 'enableMemberAccessPanel', {
     name: "Enable Member Access Panel",
     hint: "Show a quick access panel for party members when hovering over party token.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'smartFormationOrdering', {
+    name: "Smart Formation Ordering",
+    hint: "Automatically arrange party members in formations with leader first, then tanks/defenders, strikers, and casters/support in back. Works with D&D 5e and PF2e.",
     scope: 'world',
     config: true,
     type: Boolean,
@@ -384,6 +393,9 @@ Hooks.on('targetToken', (user, token, targeted) => {
   // We'll use a different approach with canvas click events
 });
 
+// Track when we handle a party token double-click
+let lastPartyDoubleClick = 0;
+
 // Hook into canvas for double-click detection
 Hooks.on('canvasReady', () => {
   // Add double-click listener to canvas
@@ -404,9 +416,34 @@ Hooks.on('canvasReady', () => {
     target._pvLastClick = now;
 
     if (now - lastClick < 400) {
+      // Track that we handled a party double-click
+      lastPartyDoubleClick = now;
+
+      // Open member sheets
       openAllMemberSheets(target);
+
+      // Prevent the event from bubbling
+      event.stopPropagation();
     }
   });
+});
+
+// Prevent party token's own actor sheet from opening after double-click
+Hooks.on('renderActorSheet', (sheet, html, data) => {
+  // If a party double-click was just handled (within last 500ms), check if this is a party token's actor
+  const now = Date.now();
+  if (now - lastPartyDoubleClick > 500) return;
+
+  // Check if this actor belongs to a party token
+  const partyTokens = canvas?.tokens?.placeables.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    return memberData && memberData.length > 0 && t.document.actorId === sheet.actor?.id;
+  }) || [];
+
+  // If this is a party token's actor sheet and we just double-clicked, close it
+  if (partyTokens.length > 0) {
+    sheet.close();
+  }
 });
 
 // Add context menu options for party tokens
@@ -500,18 +537,29 @@ Hooks.on('chatMessage', (chatLog, message, chatData) => {
 
 // Enhance token tooltips with passive perception
 Hooks.on('hoverToken', (token, hovered) => {
-  if (!hovered) return;
   if (!game.settings.get('party-vision', 'showPassivePerception')) return;
 
   const memberData = token.document?.getFlag('party-vision', 'memberData');
   if (!memberData || memberData.length === 0) return;
 
-  const passivePerception = getHighestPassivePerception(token);
-  if (passivePerception) {
-    // Add to tooltip
-    const tooltip = token.tooltip;
-    if (tooltip) {
-      tooltip.text += ` | PP: ${passivePerception}`;
+  const tooltip = token.tooltip;
+  if (!tooltip) return;
+
+  if (hovered) {
+    // Store original tooltip text if not already stored
+    if (!token._pvOriginalTooltip) {
+      token._pvOriginalTooltip = tooltip.text;
+    }
+
+    const passivePerception = getHighestPassivePerception(token);
+    if (passivePerception) {
+      // Set tooltip with PP appended (using original text)
+      tooltip.text = `${token._pvOriginalTooltip} | PP: ${passivePerception}`;
+    }
+  } else {
+    // Restore original tooltip when hover ends
+    if (token._pvOriginalTooltip) {
+      tooltip.text = token._pvOriginalTooltip;
     }
   }
 });
@@ -1065,11 +1113,60 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
   
   // Calculate movement capabilities (slowest member determines party speed)
   const movementData = calculateMovementCapabilities(tokens);
-  
+
   // Determine party token size (largest member)
   const maxWidth = Math.max(...tokens.map(t => t.document.width));
   const maxHeight = Math.max(...tokens.map(t => t.document.height));
-  
+
+  // Get default movement type based on system
+  const defaultMovementType = getDefaultMovementType();
+
+  // Build actor data for movement selector (PF2e format)
+  let actorData = {};
+  if (game.system.id === 'pf2e') {
+    // PF2e v7.5+ format
+    const speeds = {};
+    movementData.types.forEach(type => {
+      speeds[type] = {
+        total: movementData.speed,
+        value: movementData.speed,
+        type: type
+      };
+    });
+
+    actorData = {
+      system: {
+        attributes: {
+          speed: {
+            value: movementData.speed,
+            type: defaultMovementType,
+            otherSpeeds: movementData.types.filter(t => t !== defaultMovementType).map(type => ({
+              type: type,
+              value: movementData.speed
+            }))
+          }
+        },
+        movement: {
+          speeds: speeds
+        }
+      }
+    };
+  } else if (game.system.id === 'dnd5e') {
+    // D&D 5e format
+    const movement = {};
+    movementData.types.forEach(type => {
+      movement[type] = movementData.speed;
+    });
+
+    actorData = {
+      system: {
+        attributes: {
+          movement: movement
+        }
+      }
+    };
+  }
+
   // Create party token at leader's position
   const partyTokenData = {
     name: partyName,
@@ -1089,6 +1186,7 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
       visionMode: "basic"
     },
     detectionModes: [],
+    actorData: actorData,
     flags: {
       'party-vision': {
         memberData: memberData,
@@ -1171,6 +1269,25 @@ function determineNaturalFacing(memberData) {
   
   // Determine direction based on vector
   return determineNaturalFacingFromOffsets(vectorX, vectorY);
+}
+
+/**
+ * Get default movement type based on game system
+ * @returns {string} Default movement type
+ */
+function getDefaultMovementType() {
+  const systemId = game.system.id;
+
+  if (systemId === 'pf2e') {
+    // PF2e default is "land" for travel
+    return 'land';
+  } else if (systemId === 'dnd5e') {
+    // D&D 5e default is "walk"
+    return 'walk';
+  }
+
+  // Generic fallback
+  return 'walk';
 }
 
 /**
@@ -1276,11 +1393,11 @@ async function showDeployDialog(partyToken) {
   // Build member checkboxes for split functionality
   const memberCheckboxes = memberData.map((member, index) => {
     return `
-      <div class="member-checkbox" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
-        <input type="checkbox" id="member-${index}" value="${index}" checked style="margin-right: 12px; transform: scale(1.3);">
-        <img src="${member.img}" style="width: 32px; height: 32px; border-radius: 50%; margin-right: 10px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
-        <label for="member-${index}" style="flex: 1; color: #ddd; cursor: pointer;">
-          ${member.name}${member.isLeader ? ' <i class="fas fa-star" style="color: #00ff88;"></i>' : ''}
+      <div class="member-checkbox" style="display: flex; align-items: center; padding: 4px 6px; margin: 2px 0; background: rgba(0,0,0,0.2); border-radius: 3px;">
+        <input type="checkbox" id="member-${index}" value="${index}" checked style="margin-right: 8px; transform: scale(1.1);">
+        <img src="${member.img}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
+        <label for="member-${index}" style="flex: 1; color: #ddd; cursor: pointer; font-size: 13px;">
+          ${member.name}${member.isLeader ? ' <i class="fas fa-star" style="color: #00ff88; font-size: 11px;"></i>' : ''}
         </label>
       </div>
     `;
@@ -1304,62 +1421,62 @@ async function showDeployDialog(partyToken) {
     content: `
       <style>
         .deploy-party-dialog {
-          padding: 15px;
+          padding: 8px;
           font-family: "Signika", sans-serif;
         }
         .deploy-party-dialog h3 {
-          margin: 15px 0 12px 0;
+          margin: 8px 0 6px 0;
           color: #ddd;
-          font-size: 1.1em;
-          border-bottom: 2px solid #ff8800;
-          padding-bottom: 8px;
+          font-size: 0.95em;
+          border-bottom: 1px solid #ff8800;
+          padding-bottom: 4px;
         }
         .deploy-party-dialog h3:first-child {
           margin-top: 0;
         }
         .deploy-party-dialog .section {
-          margin: 15px 0;
+          margin: 8px 0;
         }
         .deploy-party-dialog label {
           display: block;
           color: #ddd;
           font-weight: bold;
-          margin-bottom: 8px;
-          font-size: 14px;
+          margin-bottom: 4px;
+          font-size: 13px;
         }
         .deploy-party-dialog select {
           width: 100%;
-          padding: 8px;
+          padding: 5px;
           background: rgba(0,0,0,0.4);
           border: 1px solid #555;
           color: #ddd;
-          border-radius: 4px;
-          font-size: 14px;
-          min-height: 36px;
+          border-radius: 3px;
+          font-size: 13px;
+          min-height: 28px;
         }
         .deploy-party-dialog select option {
           background: #fff;
           color: #000;
-          padding: 8px;
+          padding: 5px;
         }
         .deploy-party-dialog .info-text {
-          font-size: 0.85em;
+          font-size: 0.75em;
           color: #aaa;
-          margin: 8px 0;
+          margin: 4px 0;
           font-style: italic;
         }
         .deploy-party-dialog .direction-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-          max-width: 240px;
-          margin: 15px auto;
+          gap: 5px;
+          max-width: 150px;
+          margin: 8px auto;
         }
         .deploy-party-dialog .direction-btn {
           aspect-ratio: 1;
           border: 2px solid #555;
           background: rgba(0,0,0,0.4);
-          border-radius: 8px;
+          border-radius: 5px;
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -1379,26 +1496,26 @@ async function showDeployDialog(partyToken) {
           visibility: hidden;
         }
         .deploy-party-dialog .direction-btn i {
-          font-size: 28px;
+          font-size: 18px;
           color: #ddd;
         }
         .deploy-party-dialog .member-list {
-          max-height: 300px;
+          max-height: 200px;
           overflow-y: auto;
         }
         .deploy-party-dialog .quick-select {
           display: flex;
-          gap: 10px;
-          margin-bottom: 10px;
+          gap: 6px;
+          margin-bottom: 6px;
         }
         .deploy-party-dialog .quick-select button {
-          padding: 6px 12px;
+          padding: 4px 8px;
           background: rgba(0,0,0,0.4);
           border: 1px solid #555;
           color: #ddd;
-          border-radius: 4px;
+          border-radius: 3px;
           cursor: pointer;
-          font-size: 12px;
+          font-size: 11px;
         }
         .deploy-party-dialog .quick-select button:hover {
           background: rgba(255, 136, 0, 0.2);
@@ -1620,13 +1737,32 @@ async function deployParty(partyToken, formationKey, direction, formNewParty = f
   const gridSize = canvas.grid.size;
   const partyGridX = partyToken.x / gridSize;
   const partyGridY = partyToken.y / gridSize;
-  
+
   const tokenCreationData = [];
   const animate = game.settings.get('party-vision', 'animateDeployment');
   const animSpeed = game.settings.get('party-vision', 'deploymentAnimationSpeed');
-  
-  for (let i = 0; i < memberData.length; i++) {
-    const member = memberData[i];
+
+  // Smart formation ordering (if enabled and not using custom formations)
+  let orderedMembers = memberData;
+  const useSmartOrdering = game.settings.get('party-vision', 'smartFormationOrdering');
+  const isCustomFormation = formationKey === 'custom' || formationKey === 'saved-custom';
+
+  if (useSmartOrdering && !isCustomFormation) {
+    console.log('Party Vision | Using smart formation ordering');
+
+    // Get all actors
+    const actors = memberData.map(m => game.actors.get(m.actorId));
+
+    // Sort members by role
+    const sorted = sortMembersForFormation(memberData, actors);
+    orderedMembers = sorted.map(s => s.member);
+
+    // Log the ordering for debugging
+    console.log('Party Vision | Formation order:', sorted.map(s => `${s.member.name} (${s.role})`).join(', '));
+  }
+
+  for (let i = 0; i < orderedMembers.length; i++) {
+    const member = orderedMembers[i];
     const actor = game.actors.get(member.actorId);
     
     if (!actor) {
@@ -2472,27 +2608,57 @@ async function cycleLightSource(partyToken) {
     return;
   }
 
-  // Get current light source index
-  const currentLight = partyToken.document.light;
-  let currentIndex = -1;
+  // Sort light sources by brightness (brightest first)
+  lightsources.sort((a, b) => {
+    const brightnessA = (a.light.bright || 0) + (a.light.dim || 0) * 0.5;
+    const brightnessB = (b.light.bright || 0) + (b.light.dim || 0) * 0.5;
+    return brightnessB - brightnessA;
+  });
 
-  for (let i = 0; i < lightsources.length; i++) {
-    const source = lightsources[i];
-    if (source.light.bright === currentLight.bright && source.light.dim === currentLight.dim) {
-      currentIndex = i;
-      break;
+  // Get current light state
+  const currentLight = partyToken.document.light;
+  const isLightOff = !currentLight || (currentLight.bright === 0 && currentLight.dim === 0);
+
+  // Find current light source index
+  let currentIndex = -1;
+  if (!isLightOff) {
+    for (let i = 0; i < lightsources.length; i++) {
+      const source = lightsources[i];
+      if (source.light.bright === currentLight.bright &&
+          source.light.dim === currentLight.dim &&
+          source.light.color === currentLight.color) {
+        currentIndex = i;
+        break;
+      }
     }
   }
 
-  // Cycle to next light source
-  const nextIndex = (currentIndex + 1) % lightsources.length;
-  const nextSource = lightsources[nextIndex];
+  // Cycle logic: brightest -> next brightest -> ... -> dimmest -> off -> brightest
+  let newLight;
+  let message;
 
-  await partyToken.document.update({
-    light: nextSource.light
-  });
+  if (isLightOff) {
+    // Currently off, go to brightest
+    newLight = lightsources[0].light;
+    message = `Party light: ${lightsources[0].name} (brightest)`;
+  } else if (currentIndex >= 0 && currentIndex < lightsources.length - 1) {
+    // Go to next light source
+    newLight = lightsources[currentIndex + 1].light;
+    message = `Party light: ${lightsources[currentIndex + 1].name}`;
+  } else {
+    // Last light source or unknown, turn off
+    newLight = {
+      bright: 0,
+      dim: 0,
+      angle: 360,
+      alpha: 0.5,
+      animation: { type: null }
+    };
+    message = "Party light: Off";
+  }
 
-  ui.notifications.info(`Party light source: ${nextSource.name}`);
+  await partyToken.document.update({ light: newLight });
+  ui.notifications.info(message);
 }
 
 // ==============================================
@@ -2544,28 +2710,55 @@ function toggleFollowLeaderMode() {
 
 // Hook for token updates to maintain formation
 Hooks.on('updateToken', (tokenDoc, change, options, userId) => {
-  if (!followLeaderMode || !leaderToken) return;
-  if (tokenDoc.id !== leaderToken.id) return;
-  if (!change.x && !change.y) return;
-  
-  // Leader moved, update followers
-  const gridSize = canvas.grid.size;
-  const leaderGridX = leaderToken.x / gridSize;
-  const leaderGridY = leaderToken.y / gridSize;
-  
-  for (const [followerId, offset] of followerOffsets.entries()) {
-    const follower = canvas.tokens.get(followerId);
-    if (!follower) continue;
-    
-    const newGridX = leaderGridX + offset.dx;
-    const newGridY = leaderGridY + offset.dy;
-    const newX = newGridX * gridSize;
-    const newY = newGridY * gridSize;
-    
-    // Check for wall collisions
-    if (!hasWallCollision(newX + follower.w / 2, newY + follower.h / 2, follower.document.width, follower.document.height)) {
-      follower.document.update({ x: newX, y: newY }, { animate: false });
+  // Handle follow-the-leader mode
+  if (followLeaderMode && leaderToken && tokenDoc.id === leaderToken.id && (change.x || change.y)) {
+    // Leader moved, update followers
+    const gridSize = canvas.grid.size;
+    const leaderGridX = leaderToken.x / gridSize;
+    const leaderGridY = leaderToken.y / gridSize;
+
+    for (const [followerId, offset] of followerOffsets.entries()) {
+      const follower = canvas.tokens.get(followerId);
+      if (!follower) continue;
+
+      const newGridX = leaderGridX + offset.dx;
+      const newGridY = leaderGridY + offset.dy;
+      const newX = newGridX * gridSize;
+      const newY = newGridY * gridSize;
+
+      // Check for wall collisions
+      if (!hasWallCollision(newX + follower.w / 2, newY + follower.h / 2, follower.document.width, follower.document.height)) {
+        follower.document.update({ x: newX, y: newY }, { animate: false });
+      }
     }
+  }
+
+  // Handle HP updates for deployed party member tokens (unlinked tokens)
+  const hpChanged = change.actorData?.system?.attributes?.hp ||
+                     change.actorData?.system?.health ||
+                     change.actorData?.system?.hp ||
+                     change.delta?.system?.attributes?.hp ||
+                     change.delta?.system?.health ||
+                     change.delta?.system?.hp;
+
+  if (hpChanged && game.settings.get('party-vision', 'showHealthIndicator')) {
+    const token = canvas.tokens.get(tokenDoc.id);
+    if (!token) return;
+
+    // Check if this token's actor is in any party
+    const actorId = token.actor?.id;
+    if (!actorId) return;
+
+    // Find party tokens containing this actor
+    canvas.tokens.placeables.forEach(partyToken => {
+      const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+      if (!memberData) return;
+
+      const hasMember = memberData.some(m => m.actorId === actorId);
+      if (hasMember) {
+        refreshHealthIndicator(partyToken);
+      }
+    });
   }
 });
 
@@ -2708,8 +2901,12 @@ Hooks.on('deleteItem', async (item, options, userId) => {
 
 // Update party lighting when actor light changes
 Hooks.on('updateActor', (actor, change, options, userId) => {
-  // Check if light was changed
-  if (!change.prototypeToken?.light) return;
+  // Check what was changed
+  const lightChanged = change.prototypeToken?.light;
+  const hpChanged = change.system?.attributes?.hp || change.system?.health || change.system?.hp;
+
+  // If nothing relevant changed, return early
+  if (!lightChanged && !hpChanged) return;
 
   // Find party tokens containing this actor
   canvas.tokens.placeables.forEach(token => {
@@ -2718,7 +2915,15 @@ Hooks.on('updateActor', (actor, change, options, userId) => {
 
     const hasMember = memberData.some(m => m.actorId === actor.id);
     if (hasMember) {
-      debouncedUpdatePartyLighting(token);
+      // Update lighting if light changed
+      if (lightChanged) {
+        debouncedUpdatePartyLighting(token);
+      }
+
+      // Update health indicator if HP changed
+      if (hpChanged && game.settings.get('party-vision', 'showHealthIndicator')) {
+        refreshHealthIndicator(token);
+      }
     }
   });
 });
@@ -3278,6 +3483,116 @@ function getActorMaxHP(actor) {
 }
 
 /**
+ * Get character role/class for smart formation ordering
+ * @param {Actor} actor - The actor
+ * @returns {string} Role: 'tank', 'striker', 'support', or 'unknown'
+ */
+function getCharacterRole(actor) {
+  if (!actor || !actor.system) return 'unknown';
+
+  // Detect system
+  const systemId = game.system.id;
+
+  // D&D 5e
+  if (systemId === 'dnd5e') {
+    const classes = actor.items?.filter(i => i.type === 'class') || [];
+    const classNames = classes.map(c => c.name?.toLowerCase() || '').join(' ');
+
+    // Tanks/Defenders (high AC, front line)
+    if (classNames.match(/fighter|paladin|barbarian|monk/)) {
+      return 'tank';
+    }
+    // Strikers (melee damage dealers)
+    if (classNames.match(/rogue|ranger|blood hunter/)) {
+      return 'striker';
+    }
+    // Support/Casters (stay in back)
+    if (classNames.match(/wizard|sorcerer|warlock|bard|cleric|druid|artificer/)) {
+      return 'support';
+    }
+  }
+
+  // Pathfinder 2e
+  if (systemId === 'pf2e') {
+    const className = actor.class?.name?.toLowerCase() || '';
+
+    // Tanks/Defenders
+    if (className.match(/fighter|champion|monk|barbarian/)) {
+      return 'tank';
+    }
+    // Strikers
+    if (className.match(/rogue|ranger|swashbuckler|gunslinger|magus|investigator/)) {
+      return 'striker';
+    }
+    // Support/Casters
+    if (className.match(/wizard|sorcerer|bard|cleric|druid|witch|oracle|alchemist|summoner/)) {
+      return 'support';
+    }
+  }
+
+  // Fallback: use HP as indicator (high HP = tank, low HP = support)
+  const maxHP = getActorMaxHP(actor);
+  if (maxHP > 50) return 'tank';
+  if (maxHP > 30) return 'striker';
+  if (maxHP > 0) return 'support';
+
+  return 'unknown';
+}
+
+/**
+ * Get role priority for smart formation ordering
+ * @param {string} role - The role
+ * @returns {number} Priority (lower = front, higher = back)
+ */
+function getRolePriority(role) {
+  const priorities = {
+    'leader': 0,  // Leader always first
+    'tank': 1,    // Tanks in front
+    'striker': 2, // Strikers in middle
+    'support': 3, // Support in back
+    'unknown': 4  // Unknown in back
+  };
+  return priorities[role] || 999;
+}
+
+/**
+ * Sort party members for smart formation ordering
+ * @param {Array} memberData - Array of member data objects
+ * @param {Array} actors - Array of corresponding Actor objects
+ * @returns {Array} Sorted array of {member, actor, role} objects
+ */
+function sortMembersForFormation(memberData, actors) {
+  // Create array with members, actors, and roles
+  const membersWithRoles = memberData.map((member, index) => {
+    const actor = actors[index];
+    let role = getCharacterRole(actor);
+
+    // Leader always gets priority
+    if (member.isLeader) {
+      role = 'leader';
+    }
+
+    return {
+      member,
+      actor,
+      role,
+      priority: getRolePriority(role),
+      originalIndex: index
+    };
+  });
+
+  // Sort by priority (lower = front), then by original index for stability
+  membersWithRoles.sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+    return a.originalIndex - b.originalIndex;
+  });
+
+  return membersWithRoles;
+}
+
+/**
  * Refresh health indicator on party token
  * @param {Token} partyToken - The party token
  */
@@ -3422,6 +3737,15 @@ window.PartyVision = {
   getHighestPassivePerception,
   refreshHealthIndicator,
   refreshStatusEffects,
+
+  // Smart Formation Ordering
+  getCharacterRole,
+  getRolePriority,
+  sortMembersForFormation,
+
+  // Movement
+  getDefaultMovementType,
+  calculateMovementCapabilities,
 
   // Utility
   refreshAllPartyLighting: async function() {
