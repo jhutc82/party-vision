@@ -2,6 +2,134 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.5.0] - 2025-11-03
+
+### Added - Player-Friendly Enhancements
+
+**Double-Click to Open Sheets**
+- Double-clicking a party token now opens all member actor sheets simultaneously
+- Sheets are automatically cascaded with offset positions for easy viewing
+- Respects user permissions (only opens sheets you have permission to view)
+- Can be toggled on/off in module settings
+
+**Combat Toggle Integration**
+- Clicking the combat toggle button on a party token now adds ALL members to combat tracker
+- Each member gets their own combatant entry with proper initiative ordering
+- Toggle off to remove all party members from combat at once
+- Auto-roll initiative option for all members when added (configurable)
+
+**Right-Click Context Menu**
+- "Open All Sheets" - Quick access to open all member character sheets
+- "View Party Members" - Opens detailed member access panel
+- "Split Single Member" - Quick dialog to split one member from party
+
+**Member Access Panel**
+- Beautiful interactive dialog showing all party members
+- Displays member portraits, current HP, max HP, and active status effects
+- Quick action buttons to open individual sheets or split members
+- Real-time status updates
+- Smooth animations and modern styling
+
+**Party Chat Commands**
+- `/party status` - Shows party health and active effects in chat
+- `/party members` - Lists all party members with leader indication
+- `/party help` - Shows available commands
+- All commands whispered to user for privacy
+
+**Health Indicator**
+- Visual health bar displayed below party token
+- Color-coded: Green (>50% HP), Orange (25-50% HP), Red (<25% HP)
+- Shows aggregate HP of all party members
+- Updates automatically when member HP changes
+- PIXI graphics for performance
+
+**Status Effect Indicators**
+- Shows up to 5 active status effects as small icons on party token
+- Displays unique effects from all party members
+- Positioned at top-left of token for visibility
+- Updates automatically when effects are added/removed
+- Icon-based visual representation with tooltips
+
+**Passive Perception Display**
+- Shows highest passive perception value in party token tooltip
+- System-agnostic (supports D&D 5e, PF2e, and other systems)
+- Automatically calculates from character abilities
+- Can be toggled on/off in settings
+
+### Added - Module Settings
+
+Six new configurable settings in the module configuration:
+- **Auto-Roll Initiative for Party** (default: ON) - Automatically roll initiative when adding party to combat
+- **Show Party Health Indicator** (default: ON) - Display aggregate health bar on party token
+- **Show Status Effect Indicators** (default: ON) - Display active status effects on party token
+- **Show Passive Perception** (default: ON) - Display highest passive perception in tooltip
+- **Double-Click Opens All Sheets** (default: ON) - Enable double-click to open all member sheets
+- **Enable Member Access Panel** (default: ON) - Enable member access panel feature
+
+### Technical Improvements
+
+**System-Agnostic Data Access**
+- Added helper functions for cross-system compatibility
+- `getActorHP()` - Works with D&D 5e, PF2e, and other systems
+- `getActorMaxHP()` - System-agnostic max HP retrieval
+- `getActorPassivePerception()` - Cross-system perception detection with fallback calculation
+
+**PIXI Graphics Integration**
+- Health bars and status effects use PIXI.Graphics and PIXI.Sprite for performance
+- Added as children to token object with named identifiers
+- Automatic cleanup prevents memory leaks
+- Smooth visual updates without canvas redraws
+
+**Hook Integration**
+- `getTokenConfigHeaderButtons` - Add "View Members" button to token config
+- `getTokenHUDMenuItems` - Add context menu options
+- `chatMessage` - Intercept `/party` commands
+- `hoverToken` - Add passive perception to tooltip
+- `refreshToken` - Update health and status indicators
+- `renderTokenHUD` - Override combat toggle for party tokens
+
+**Public API Expansion**
+Added 13 new functions to `window.PartyVision`:
+- `openAllMemberSheets()`
+- `togglePartyCombat()`
+- `addPartyToCombat()`
+- `rollPartyInitiative()`
+- `showMemberAccessPanel()`
+- `showQuickSplitDialog()`
+- `showPartyStatus()`
+- `showPartyMembers()`
+- `showPartyHelp()`
+- `getHighestPassivePerception()`
+- `refreshHealthIndicator()`
+- `refreshStatusEffects()`
+- Plus helper functions for HP and perception detection
+
+### Changed
+
+**Enhanced Token HUD**
+- Combat toggle button now has party-specific behavior
+- Right-click functionality preserved for individual token combat
+- Visual feedback for party vs individual token interactions
+
+**Improved User Experience**
+- Cascading sheet positions prevent screen clutter
+- Responsive dialogs adapt to screen size
+- Smooth animations for all interactive elements
+- Color-coded health indicators for quick status assessment
+
+**CSS Enhancements**
+- Added ~340 lines of new styling for player enhancement features
+- Dark theme consistency across all new dialogs
+- Responsive design for different screen sizes
+- Smooth hover effects and transitions
+- Custom scrollbar styling for member lists
+
+### Notes
+
+This major update focuses on making Party Vision more player-friendly and reducing GM workload. The new features provide quick access to party information, streamlined combat integration, and better visual feedback for party status. All features are configurable and can be toggled on/off based on your table's preferences.
+
+The module maintains full backward compatibility with existing party tokens and all core functionality remains unchanged.
+
 ## [2.4.9] - 2025-10-31
 
 ### Fixed

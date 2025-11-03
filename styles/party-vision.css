@@ -1,6 +1,6 @@
 /* ==============================================
    PARTY VISION - STYLES
-   Version 2.4.6 - Enhanced with proper dialog styling
+   Version 2.5.0 - Player-Friendly Enhancements
    ============================================== */
 
 /* Token HUD Button Styles */
@@ -421,4 +421,344 @@
 .party-member label,
 .member-checkbox label {
   color: #ddd !important;
+}
+
+/* ==============================================
+   PLAYER-FRIENDLY ENHANCEMENTS STYLES
+   ============================================== */
+
+/* Party Member Access Panel */
+.party-member-panel {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.party-member-panel h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 18px;
+  color: #ddd;
+  border-bottom: 2px solid #555;
+  padding-bottom: 8px;
+}
+
+.party-member-panel .member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.party-member-panel .member-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #666;
+  border-radius: 5px;
+  transition: all 0.2s ease;
+}
+
+.party-member-panel .member-item:hover {
+  background: rgba(0, 136, 255, 0.2);
+  border-color: #0088ff;
+  transform: translateX(3px);
+}
+
+.party-member-panel .member-portrait {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid #666;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.party-member-panel .member-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.party-member-panel .member-name {
+  font-weight: bold;
+  font-size: 15px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.party-member-panel .member-hp {
+  font-size: 13px;
+  color: #aaa;
+}
+
+.party-member-panel .member-effects {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.party-member-panel .effect-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  font-size: 12px;
+  color: #ffa500;
+}
+
+.party-member-panel .member-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.party-member-panel .member-actions button {
+  padding: 8px 12px;
+  background: rgba(0, 136, 255, 0.6);
+  border: 1px solid #0088ff;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.party-member-panel .member-actions button:hover {
+  background: rgba(0, 136, 255, 0.9);
+  transform: scale(1.05);
+}
+
+.party-member-panel .member-actions button:active {
+  transform: scale(0.95);
+}
+
+/* Quick Split Dialog */
+.quick-split-panel {
+  padding: 10px;
+}
+
+.quick-split-panel p {
+  margin-bottom: 15px;
+  color: #ddd;
+  font-size: 14px;
+}
+
+.quick-split-panel .member-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick-split-panel .member-select-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid #666;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-split-panel .member-select-item:hover {
+  background: rgba(0, 136, 255, 0.3);
+  border-color: #0088ff;
+  transform: translateX(5px);
+}
+
+.quick-split-panel .member-portrait-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #666;
+  object-fit: cover;
+}
+
+.quick-split-panel .member-name {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Party Status Chat Cards */
+.party-status-chat,
+.party-members-chat,
+.party-help-chat {
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 5px;
+}
+
+.party-status-chat h3,
+.party-members-chat h3,
+.party-help-chat h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #0088ff;
+  border-bottom: 2px solid #0088ff;
+  padding-bottom: 5px;
+}
+
+.party-status-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.party-status-chat table th {
+  background: rgba(0, 136, 255, 0.2);
+  padding: 8px;
+  text-align: left;
+  font-weight: bold;
+  border: 1px solid #666;
+}
+
+.party-status-chat table td {
+  padding: 8px;
+  border: 1px solid #666;
+}
+
+.party-status-chat table tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.party-members-chat ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 10px 0;
+}
+
+.party-members-chat li {
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.1);
+  margin-bottom: 5px;
+  border-left: 3px solid #0088ff;
+  border-radius: 3px;
+}
+
+.party-help-chat ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 10px 0;
+}
+
+.party-help-chat li {
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.1);
+  margin-bottom: 8px;
+  border-left: 3px solid #00ff88;
+  border-radius: 3px;
+}
+
+.party-help-chat strong {
+  color: #00ff88;
+  font-family: monospace;
+}
+
+/* Health Indicator (handled via PIXI graphics in main.js, but styles for any HTML overlays) */
+.party-health-overlay {
+  position: absolute;
+  bottom: -15px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.party-health-fill {
+  height: 100%;
+  background: linear-gradient(to right, #00ff00, #88ff00);
+  transition: width 0.3s ease;
+}
+
+.party-health-fill.warning {
+  background: linear-gradient(to right, #ffaa00, #ff8800);
+}
+
+.party-health-fill.danger {
+  background: linear-gradient(to right, #ff0000, #cc0000);
+}
+
+/* Status Effect Icons (handled via PIXI sprites in main.js, but styles for any HTML overlays) */
+.party-effects-overlay {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 120px;
+}
+
+.party-effect-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Scrollbar Styling for Member Panel */
+.party-member-panel .member-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.party-member-panel .member-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.party-member-panel .member-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.party-member-panel .member-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Animation for opening sheets */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.party-member-panel .member-item {
+  animation: slideInFromRight 0.2s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .party-member-panel .member-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .party-member-panel .member-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }

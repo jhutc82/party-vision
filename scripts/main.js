@@ -1,6 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
-// Version 2.4.8 - Enhanced Party Management
+// Version 2.5.0 - Player-Friendly Enhancements
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -34,7 +34,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.4.9');
+  console.log('Party Vision | Initializing Enhanced Module v2.5.0');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -149,6 +149,60 @@ Hooks.once('init', () => {
     config: false,
     type: Object,
     default: {}
+  });
+
+  game.settings.register('party-vision', 'autoRollInitiative', {
+    name: "Auto-Roll Initiative for Party",
+    hint: "Automatically roll initiative for all party members when adding to combat.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'showHealthIndicator', {
+    name: "Show Party Health Indicator",
+    hint: "Display an aggregate health bar on the party token.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'showStatusEffects', {
+    name: "Show Status Effect Indicators",
+    hint: "Display active status effects from party members on the party token.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'showPassivePerception', {
+    name: "Show Passive Perception",
+    hint: "Display the highest passive perception in the party token tooltip.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'enableDoubleClickSheets', {
+    name: "Double-Click Opens All Sheets",
+    hint: "Double-clicking a party token opens all member actor sheets.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'enableMemberAccessPanel', {
+    name: "Enable Member Access Panel",
+    hint: "Show a quick access panel for party members when hovering over party token.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
   });
 
   console.log('Party Vision | Settings registered successfully');
@@ -278,17 +332,23 @@ Hooks.once('ready', () => {
       
       if (memberData && memberData.length > 0) {
         const deployButton = $(`
-          <div class="control-icon party-vision-deploy" title="Deploy Party">
+          <div class="control-icon party-vision-deploy" title="Deploy Party (Right-click to cycle lighting)">
             <i class="fas fa-chevron-circle-right"></i>
           </div>
         `);
-        
+
         deployButton.on('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
           showDeployDialog(token);
         });
-        
+
+        deployButton.on('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          cycleLightSource(token);
+        });
+
         col.append(deployButton);
       }
     }
@@ -312,6 +372,162 @@ Hooks.once('ready', () => {
       });
     }
   });
+});
+
+// ==============================================
+// PLAYER-FRIENDLY ENHANCEMENTS
+// ==============================================
+
+// Double-click to open all actor sheets
+Hooks.on('targetToken', (user, token, targeted) => {
+  // This is a workaround since there's no direct double-click hook
+  // We'll use a different approach with canvas click events
+});
+
+// Hook into canvas for double-click detection
+Hooks.on('canvasReady', () => {
+  // Add double-click listener to canvas
+  canvas.stage.on('click', (event) => {
+    const now = Date.now();
+    const target = event.target;
+
+    if (!target || !target.document) return;
+
+    // Check if this is a party token
+    const memberData = target.document.getFlag?.('party-vision', 'memberData');
+    if (!memberData || memberData.length === 0) return;
+
+    if (!game.settings.get('party-vision', 'enableDoubleClickSheets')) return;
+
+    // Simple double-click detection with 400ms window
+    const lastClick = target._pvLastClick || 0;
+    target._pvLastClick = now;
+
+    if (now - lastClick < 400) {
+      openAllMemberSheets(target);
+    }
+  });
+});
+
+// Add context menu options for party tokens
+Hooks.on('getTokenConfigHeaderButtons', (app, buttons) => {
+  const token = app.object;
+  const memberData = token.document?.getFlag('party-vision', 'memberData');
+
+  if (memberData && memberData.length > 0) {
+    buttons.unshift({
+      label: 'View Members',
+      class: 'party-vision-view-members',
+      icon: 'fas fa-users',
+      onclick: () => showMemberAccessPanel(token)
+    });
+  }
+});
+
+// Extend token context menu
+Hooks.on('getTokenHUDMenuItems', (token, buttons) => {
+  const memberData = token.document?.getFlag('party-vision', 'memberData');
+
+  if (memberData && memberData.length > 0) {
+    buttons.push({
+      name: 'Open All Sheets',
+      icon: '<i class="fas fa-scroll"></i>',
+      callback: () => openAllMemberSheets(token)
+    });
+
+    buttons.push({
+      name: 'View Party Members',
+      icon: '<i class="fas fa-users"></i>',
+      callback: () => showMemberAccessPanel(token)
+    });
+
+    buttons.push({
+      name: 'Split Single Member',
+      icon: '<i class="fas fa-user-minus"></i>',
+      callback: () => showQuickSplitDialog(token)
+    });
+  }
+});
+
+// Enhance token HUD to add combat toggle functionality
+Hooks.on('renderTokenHUD', (app, html, data) => {
+  const token = canvas.tokens.get(data._id);
+  if (!token) return;
+
+  const memberData = token.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+
+  // Find the combat toggle button
+  const combatButton = html.find('.control-icon[data-action="combat"]');
+
+  if (combatButton.length) {
+    // Override the click handler for party tokens
+    combatButton.off('click');
+    combatButton.on('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await togglePartyCombat(token);
+    });
+  }
+});
+
+// Chat command listener for /party commands
+Hooks.on('chatMessage', (chatLog, message, chatData) => {
+  if (!message.startsWith('/party')) return true;
+
+  const args = message.slice(6).trim().split(' ');
+  const command = args[0]?.toLowerCase();
+
+  switch (command) {
+    case 'status':
+      showPartyStatus();
+      break;
+    case 'members':
+      showPartyMembers();
+      break;
+    case 'help':
+      showPartyHelp();
+      break;
+    default:
+      ChatMessage.create({
+        content: `<p>Unknown party command: ${command}</p><p>Try /party help for available commands.</p>`,
+        whisper: [game.user.id]
+      });
+  }
+
+  return false; // Prevent the message from being sent to chat
+});
+
+// Enhance token tooltips with passive perception
+Hooks.on('hoverToken', (token, hovered) => {
+  if (!hovered) return;
+  if (!game.settings.get('party-vision', 'showPassivePerception')) return;
+
+  const memberData = token.document?.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+
+  const passivePerception = getHighestPassivePerception(token);
+  if (passivePerception) {
+    // Add to tooltip
+    const tooltip = token.tooltip;
+    if (tooltip) {
+      tooltip.text += ` | PP: ${passivePerception}`;
+    }
+  }
+});
+
+// Refresh health and status indicators on token refresh
+Hooks.on('refreshToken', (token) => {
+  const memberData = token.document?.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+
+  if (game.settings.get('party-vision', 'showHealthIndicator')) {
+    refreshHealthIndicator(token);
+  }
+
+  if (game.settings.get('party-vision', 'showStatusEffects')) {
+    refreshStatusEffects(token);
+  }
 });
 
 // ==============================================
@@ -555,6 +771,40 @@ async function showFormPartyDialog() {
         .form-party-dialog .image-input-group button:hover {
           background: #0099ff;
         }
+        .form-party-dialog .formation-choice {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .form-party-dialog .formation-option {
+          display: flex;
+          align-items: center;
+          padding: 10px;
+          background: rgba(0,0,0,0.2);
+          border: 2px solid #555;
+          border-radius: 4px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .form-party-dialog .formation-option:hover {
+          border-color: #00ff88;
+          background: rgba(0,255,136,0.1);
+        }
+        .form-party-dialog .formation-option input[type="radio"] {
+          margin-right: 10px;
+          transform: scale(1.2);
+        }
+        .form-party-dialog .formation-option-label {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .form-party-dialog .formation-option-desc {
+          font-size: 0.85em;
+          color: #aaa;
+          font-weight: normal;
+        }
       </style>
       <div class="form-party-dialog">
         <div class="section">
@@ -591,15 +841,32 @@ async function showFormPartyDialog() {
           ${memberListHTML}
         </div>
         
+        ${savedConfig ? `
         <div class="section">
-          <label for="formation-preset">
-            <i class="fas fa-chess-board"></i> Formation Preset
+          <label>
+            <i class="fas fa-chess-board"></i> Formation
           </label>
-          <select id="formation-preset" name="formation">
-            ${formationOptions}
-          </select>
-          <div class="info-text">Choose how the party will be arranged when deployed.</div>
+          <div class="formation-choice">
+            <label class="formation-option">
+              <input type="radio" name="formation-choice" value="use-last" checked>
+              <span class="formation-option-label">
+                <strong>Use Last Formation</strong>
+                <span class="formation-option-desc">${savedConfig.customFormation ? 'Saved Custom Formation' : FORMATION_PRESETS[lastPreset]?.name || 'Custom'}</span>
+              </span>
+            </label>
+            <label class="formation-option">
+              <input type="radio" name="formation-choice" value="choose-different">
+              <span class="formation-option-label">Choose Different Formation</span>
+            </label>
+          </div>
+          <div id="formation-dropdown-container" style="display: none; margin-top: 10px;">
+            <select id="formation-preset" name="formation">
+              ${formationOptions}
+            </select>
+          </div>
         </div>
+        ` : ''}
+        <input type="hidden" id="formation-preset-hidden" name="formation" value="custom">
       </div>
     `,
     buttons: {
@@ -607,7 +874,23 @@ async function showFormPartyDialog() {
         label: '<i class="fas fa-users"></i> Form Party',
         callback: async (html) => {
           const leaderIndex = parseInt(html.find('input[name="leader"]:checked').val());
-          const formationKey = html.find('#formation-preset').val();
+
+          // Determine formation key based on UI state
+          let formationKey;
+          if (savedConfig) {
+            const formationChoice = html.find('input[name="formation-choice"]:checked').val();
+            if (formationChoice === 'use-last') {
+              // Use saved custom formation or last preset
+              formationKey = savedConfig.customFormation ? 'saved-custom' : lastPreset;
+            } else {
+              // User chose different formation from dropdown
+              formationKey = html.find('#formation-preset').val();
+            }
+          } else {
+            // New party - use custom formation (current positions)
+            formationKey = html.find('#formation-preset-hidden').val() || 'custom';
+          }
+
           const partyName = html.find('#party-name').val().trim() || 'Party';
           const partyImage = html.find('#party-image').val().trim() || defaultImage;
           
@@ -652,9 +935,25 @@ async function showFormPartyDialog() {
     },
     default: "form",
     render: (html) => {
-      // Select last used formation
-      html.find('#formation-preset').val(lastPreset);
-      
+      // Handle formation choice for existing parties
+      if (savedConfig) {
+        // Set default formation value in dropdown
+        const defaultFormation = savedConfig.customFormation ? 'saved-custom' : lastPreset;
+        html.find('#formation-preset').val(defaultFormation);
+
+        // Handle radio button changes
+        html.find('input[name="formation-choice"]').on('change', (e) => {
+          const choice = e.target.value;
+          const dropdownContainer = html.find('#formation-dropdown-container');
+
+          if (choice === 'choose-different') {
+            dropdownContainer.slideDown(200);
+          } else {
+            dropdownContainer.slideUp(200);
+          }
+        });
+      }
+
       // Handle image input changes
       html.find('#party-image').on('input', (e) => {
         const imagePath = e.target.value;
@@ -735,14 +1034,17 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
     const dx = tokenGridX - leaderGridX;
     const dy = tokenGridY - leaderGridY;
     
-    // Store original lighting
+    // Store original lighting from prototype token (NOT current token lighting)
+    // This ensures we save the base lighting without any active items/effects
+    // which will be reapplied automatically when the token is deployed
+    const protoLight = actor.prototypeToken.light || {};
     const originalLight = {
-      bright: token.document.light.bright || 0,
-      dim: token.document.light.dim || 0,
-      angle: token.document.light.angle || 360,
-      color: token.document.light.color || null,
-      alpha: token.document.light.alpha || 0.5,
-      animation: token.document.light.animation || {}
+      bright: protoLight.bright || 0,
+      dim: protoLight.dim || 0,
+      angle: protoLight.angle || 360,
+      color: protoLight.color || null,
+      alpha: protoLight.alpha || 0.5,
+      animation: foundry.utils.deepClone(protoLight.animation) || {}
     };
     
     memberData.push({
@@ -1164,22 +1466,22 @@ async function showDeployDialog(partyToken) {
         callback: async (html) => {
           const formationKey = html.find('#deploy-formation').val();
           const direction = html.find('.direction-btn.selected').data('direction') || 'north';
-          
+
           // Get selected member indices
           const selectedIndices = [];
           html.find('input[type="checkbox"]:checked').each(function() {
             selectedIndices.push(parseInt($(this).val()));
           });
-          
+
           if (selectedIndices.length === 0) {
             ui.notifications.warn("Select at least one member to deploy.");
             return;
           }
-          
+
           // Save last used values
           await game.settings.set('party-vision', 'lastFormationPreset', formationKey);
           await game.settings.set('party-vision', 'lastDeployDirection', direction);
-          
+
           // Deploy based on selection
           if (selectedIndices.length === memberData.length) {
             // Deploy all members
@@ -1187,6 +1489,42 @@ async function showDeployDialog(partyToken) {
           } else {
             // Split and deploy selected
             await splitAndDeployMembers(partyToken, selectedIndices, formationKey, direction);
+          }
+        }
+      },
+      deployAndForm: {
+        label: '<i class="fas fa-users"></i> Deploy & Form New Party',
+        callback: async (html) => {
+          const formationKey = html.find('#deploy-formation').val();
+          const direction = html.find('.direction-btn.selected').data('direction') || 'north';
+
+          // Get selected member indices
+          const selectedIndices = [];
+          html.find('input[type="checkbox"]:checked').each(function() {
+            selectedIndices.push(parseInt($(this).val()));
+          });
+
+          if (selectedIndices.length === 0) {
+            ui.notifications.warn("Select at least one member to deploy.");
+            return;
+          }
+
+          if (selectedIndices.length < 2) {
+            ui.notifications.warn("Need at least 2 members to form a new party after deployment.");
+            return;
+          }
+
+          // Save last used values
+          await game.settings.set('party-vision', 'lastFormationPreset', formationKey);
+          await game.settings.set('party-vision', 'lastDeployDirection', direction);
+
+          // Deploy based on selection
+          if (selectedIndices.length === memberData.length) {
+            // Deploy all members
+            await deployParty(partyToken, formationKey, direction, true);
+          } else {
+            // Split and deploy selected
+            await splitAndDeployMembers(partyToken, selectedIndices, formationKey, direction, true);
           }
         }
       },
@@ -1230,8 +1568,9 @@ async function showDeployDialog(partyToken) {
  * @param {Token} partyToken - The party token
  * @param {string} formationKey - Formation preset key
  * @param {string} direction - Deployment direction
+ * @param {boolean} formNewParty - Whether to show form party dialog after deployment
  */
-async function deployParty(partyToken, formationKey, direction) {
+async function deployParty(partyToken, formationKey, direction, formNewParty = false) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   
   if (!memberData || memberData.length === 0) {
@@ -1363,12 +1702,19 @@ async function deployParty(partyToken, formationKey, direction) {
   }, true);
   
   ui.notifications.info(`Party deployed: ${createdTokens.length} members!`);
-  
+
   // Select deployed tokens
   const deployedTokens = createdTokens.map(doc => canvas.tokens.get(doc.id)).filter(t => t);
   deployedTokens.forEach((token, index) => {
     token.control({ releaseOthers: index === 0 ? true : false });
   });
+
+  // If requested, show form party dialog with deployed tokens
+  if (formNewParty && deployedTokens.length >= 2) {
+    // Wait a moment for selection to settle
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await showFormPartyDialog();
+  }
 }
 
 /**
@@ -1438,7 +1784,7 @@ function hasWallCollision(centerX, centerY, width, height) {
   
   // Check if any corner is blocked by walls
   for (const corner of corners) {
-    const ray = new Ray({ x: centerX, y: centerY }, corner);
+    const ray = new foundry.canvas.geometry.Ray({ x: centerX, y: centerY }, corner);
     
     // Check for wall collisions using modern Foundry v13 API
     if (typeof foundry.utils.lineSegmentIntersects === 'function') {
@@ -1492,8 +1838,9 @@ function findNearbyValidPosition(x, y, width, height) {
  * @param {Array<number>} memberIndices - Indices of members to deploy
  * @param {string} formationKey - Formation preset key (optional, defaults to 'custom')
  * @param {string} direction - Deployment direction (optional, defaults to 'north')
+ * @param {boolean} formNewParty - Whether to show form party dialog after deployment
  */
-async function splitAndDeployMembers(partyToken, memberIndices, formationKey = 'custom', direction = 'north') {
+async function splitAndDeployMembers(partyToken, memberIndices, formationKey = 'custom', direction = 'north', formNewParty = false) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   
   if (!memberData || memberData.length === 0) {
@@ -1682,12 +2029,19 @@ async function splitAndDeployMembers(partyToken, memberIndices, formationKey = '
     refreshVision: true,
     refreshLighting: true
   }, true);
-  
+
   // Select deployed tokens
   const deployedTokens = createdTokens.map(doc => canvas.tokens.get(doc.id)).filter(t => t);
   deployedTokens.forEach((token, index) => {
     token.control({ releaseOthers: index === 0 ? true : false });
   });
+
+  // If requested, show form party dialog with deployed tokens
+  if (formNewParty && deployedTokens.length >= 2) {
+    // Wait a moment for selection to settle
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await showFormPartyDialog();
+  }
 }
 
 // ==============================================
@@ -2053,37 +2407,75 @@ async function cycleLightSource(partyToken) {
     ui.notifications.warn("This token has no party data.");
     return;
   }
-  
-  // Collect all members with light sources
+
+  // Collect all members with light sources (including items/effects)
   const lightsources = [];
-  
+
   for (const member of memberData) {
     const actor = game.actors.get(member.actorId);
     if (!actor) continue;
-    
-    let light = null;
-    
-    if (actor.prototypeToken?.light) {
-      light = actor.prototypeToken.light;
+
+    let effectiveLight = null;
+
+    // STRATEGY 1: Check if this actor has deployed tokens on the scene
+    const deployedTokens = canvas.tokens.placeables.filter(t =>
+      t.actor?.id === actor.id &&
+      t.id !== partyToken.id &&
+      !t.document.getFlag('party-vision', 'memberData')
+    );
+
+    if (deployedTokens.length > 0) {
+      const token = deployedTokens[0];
+      if (token.document.light && (token.document.light.bright > 0 || token.document.light.dim > 0)) {
+        effectiveLight = foundry.utils.deepClone(token.document.light);
+      }
     }
-    
-    if (light && (light.bright > 0 || light.dim > 0)) {
+
+    // STRATEGY 2: Try to get computed token data with effects applied
+    if (!effectiveLight) {
+      try {
+        let tokenDoc = null;
+
+        if (typeof actor.getTokenDocument === 'function') {
+          tokenDoc = await actor.getTokenDocument();
+        } else if (typeof actor.getTokenData === 'function') {
+          tokenDoc = actor.getTokenData();
+        } else if (actor.prototypeToken) {
+          tokenDoc = actor.prototypeToken;
+        }
+
+        if (tokenDoc?.light && (tokenDoc.light.bright > 0 || tokenDoc.light.dim > 0)) {
+          effectiveLight = foundry.utils.deepClone(tokenDoc.light);
+        }
+      } catch (e) {
+        // Silently continue
+      }
+    }
+
+    // STRATEGY 3: Fall back to original stored light
+    if (!effectiveLight && member.originalLight) {
+      if (member.originalLight.bright > 0 || member.originalLight.dim > 0) {
+        effectiveLight = foundry.utils.deepClone(member.originalLight);
+      }
+    }
+
+    if (effectiveLight) {
       lightsources.push({
         name: member.name,
-        light: foundry.utils.deepClone(light)
+        light: effectiveLight
       });
     }
   }
-  
+
   if (lightsources.length === 0) {
     ui.notifications.info("No party members have light sources.");
     return;
   }
-  
+
   // Get current light source index
   const currentLight = partyToken.document.light;
   let currentIndex = -1;
-  
+
   for (let i = 0; i < lightsources.length; i++) {
     const source = lightsources[i];
     if (source.light.bright === currentLight.bright && source.light.dim === currentLight.dim) {
@@ -2091,15 +2483,15 @@ async function cycleLightSource(partyToken) {
       break;
     }
   }
-  
+
   // Cycle to next light source
   const nextIndex = (currentIndex + 1) % lightsources.length;
   const nextSource = lightsources[nextIndex];
-  
+
   await partyToken.document.update({
     light: nextSource.light
   });
-  
+
   ui.notifications.info(`Party light source: ${nextSource.name}`);
 }
 
@@ -2406,6 +2798,592 @@ function determineNaturalFacingFromOffsets(dx, dy) {
 }
 
 // ==============================================
+// PLAYER-FRIENDLY HELPER FUNCTIONS
+// ==============================================
+
+/**
+ * Open all member actor sheets
+ * @param {Token} partyToken - The party token
+ */
+async function openAllMemberSheets(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn('No party members found');
+    return;
+  }
+
+  console.log('Party Vision | Opening all member sheets');
+
+  let offsetX = 20;
+  let offsetY = 20;
+  const increment = 30;
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    // Check if user has permission to view
+    if (!actor.testUserPermission(game.user, 'OBSERVER')) continue;
+
+    const sheet = actor.sheet;
+    await sheet.render(true, { left: offsetX, top: offsetY });
+
+    offsetX += increment;
+    offsetY += increment;
+
+    // Reset position if too far off screen
+    if (offsetX > window.innerWidth - 400 || offsetY > window.innerHeight - 400) {
+      offsetX = 20;
+      offsetY = 20;
+    }
+  }
+
+  ui.notifications.info(`Opened ${memberData.length} character sheet(s)`);
+}
+
+/**
+ * Toggle combat state for entire party
+ * @param {Token} partyToken - The party token
+ */
+async function togglePartyCombat(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn('No party members found');
+    return;
+  }
+
+  const combat = game.combat;
+  if (!combat) {
+    ui.notifications.warn('No active combat encounter');
+    return;
+  }
+
+  // Check if party is already in combat
+  const partyInCombat = combat.combatants.some(c =>
+    c.tokenId === partyToken.id
+  );
+
+  if (partyInCombat) {
+    // Remove from combat
+    const combatant = combat.combatants.find(c => c.tokenId === partyToken.id);
+    if (combatant) {
+      await combatant.delete();
+      ui.notifications.info('Removed party from combat');
+    }
+  } else {
+    // Add all members to combat
+    await addPartyToCombat(partyToken);
+  }
+}
+
+/**
+ * Add all party members to combat tracker
+ * @param {Token} partyToken - The party token
+ */
+async function addPartyToCombat(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn('No party members found');
+    return;
+  }
+
+  const combat = game.combat;
+  if (!combat) {
+    ui.notifications.warn('No active combat encounter. Start combat first.');
+    return;
+  }
+
+  console.log('Party Vision | Adding all party members to combat');
+
+  const combatantsToCreate = [];
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    // Check if already in combat
+    const existing = combat.combatants.find(c => c.actorId === actor.id);
+    if (existing) continue;
+
+    combatantsToCreate.push({
+      tokenId: partyToken.id,
+      actorId: actor.id,
+      sceneId: canvas.scene.id,
+      hidden: partyToken.document.hidden
+    });
+  }
+
+  if (combatantsToCreate.length > 0) {
+    await combat.createEmbeddedDocuments('Combatant', combatantsToCreate);
+    ui.notifications.info(`Added ${combatantsToCreate.length} party member(s) to combat`);
+
+    // Auto-roll initiative if enabled
+    if (game.settings.get('party-vision', 'autoRollInitiative')) {
+      await rollPartyInitiative(combat, combatantsToCreate);
+    }
+  }
+}
+
+/**
+ * Roll initiative for all party members
+ * @param {Combat} combat - The combat encounter
+ * @param {Array} combatants - Array of combatant data
+ */
+async function rollPartyInitiative(combat, combatants) {
+  console.log('Party Vision | Rolling initiative for party members');
+
+  for (const combatantData of combatants) {
+    const combatant = combat.combatants.find(c => c.actorId === combatantData.actorId);
+    if (combatant && !combatant.initiative) {
+      await combatant.rollInitiative();
+    }
+  }
+
+  ui.notifications.info('Rolled initiative for party members');
+}
+
+/**
+ * Show member access panel
+ * @param {Token} partyToken - The party token
+ */
+async function showMemberAccessPanel(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn('No party members found');
+    return;
+  }
+
+  const members = memberData.map(m => {
+    const actor = game.actors.get(m.actorId);
+    return {
+      ...m,
+      actor,
+      hp: actor ? getActorHP(actor) : null,
+      maxHp: actor ? getActorMaxHP(actor) : null,
+      effects: actor ? actor.effects.filter(e => !e.disabled) : []
+    };
+  }).filter(m => m.actor); // Only include valid actors
+
+  const content = `
+    <div class="party-member-panel">
+      <h3>Party Members</h3>
+      <div class="member-list">
+        ${members.map((m, i) => `
+          <div class="member-item" data-index="${i}">
+            <img src="${m.img}" alt="${m.name}" class="member-portrait">
+            <div class="member-info">
+              <div class="member-name">${m.name}</div>
+              <div class="member-hp">HP: ${m.hp}/${m.maxHp}</div>
+              ${m.effects.length > 0 ? `
+                <div class="member-effects">
+                  ${m.effects.map(e => `<span class="effect-icon" title="${e.name}"><i class="${e.icon || 'fas fa-circle'}"></i></span>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+            <div class="member-actions">
+              <button class="open-sheet" data-actor-id="${m.actorId}" title="Open Sheet">
+                <i class="fas fa-scroll"></i>
+              </button>
+              <button class="split-member" data-index="${i}" title="Split from Party">
+                <i class="fas fa-user-minus"></i>
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  const dialog = new Dialog({
+    title: 'Party Members',
+    content,
+    buttons: {
+      close: {
+        icon: '<i class="fas fa-times"></i>',
+        label: 'Close'
+      }
+    },
+    render: (html) => {
+      html.find('.open-sheet').on('click', (e) => {
+        const actorId = e.currentTarget.dataset.actorId;
+        const actor = game.actors.get(actorId);
+        if (actor) actor.sheet.render(true);
+      });
+
+      html.find('.split-member').on('click', async (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        await splitAndDeployMembers(partyToken, [index], 'custom', 'north', false);
+        dialog.close();
+      });
+    }
+  }, {
+    width: 400,
+    classes: ['party-vision-dialog', 'party-member-panel-dialog']
+  });
+
+  dialog.render(true);
+}
+
+/**
+ * Show quick split dialog
+ * @param {Token} partyToken - The party token
+ */
+async function showQuickSplitDialog(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) {
+    ui.notifications.warn('No party members found');
+    return;
+  }
+
+  const members = memberData.map((m, i) => {
+    const actor = game.actors.get(m.actorId);
+    return { ...m, actor, index: i };
+  }).filter(m => m.actor);
+
+  const content = `
+    <div class="quick-split-panel">
+      <p>Select a member to split from the party:</p>
+      <div class="member-select-list">
+        ${members.map(m => `
+          <div class="member-select-item" data-index="${m.index}">
+            <img src="${m.img}" alt="${m.name}" class="member-portrait-small">
+            <span class="member-name">${m.name}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  const dialog = new Dialog({
+    title: 'Split Member from Party',
+    content,
+    buttons: {
+      cancel: {
+        icon: '<i class="fas fa-times"></i>',
+        label: 'Cancel'
+      }
+    },
+    render: (html) => {
+      html.find('.member-select-item').on('click', async (e) => {
+        const index = parseInt(e.currentTarget.dataset.index);
+        await splitAndDeployMembers(partyToken, [index], 'custom', 'north', false);
+        dialog.close();
+        ui.notifications.info(`Split ${members[index].name} from party`);
+      });
+    }
+  }, {
+    width: 300,
+    classes: ['party-vision-dialog', 'quick-split-dialog']
+  });
+
+  dialog.render(true);
+}
+
+/**
+ * Show party status in chat
+ */
+function showPartyStatus() {
+  const partyTokens = canvas.tokens.controlled.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    return memberData && memberData.length > 0;
+  });
+
+  if (partyTokens.length === 0) {
+    const allPartyTokens = canvas.tokens.placeables.filter(t => {
+      const memberData = t.document.getFlag('party-vision', 'memberData');
+      return memberData && memberData.length > 0;
+    });
+
+    if (allPartyTokens.length === 0) {
+      ChatMessage.create({
+        content: '<p>No party tokens found on this scene.</p>',
+        whisper: [game.user.id]
+      });
+      return;
+    }
+
+    // Use the first party token found
+    partyTokens.push(allPartyTokens[0]);
+  }
+
+  const partyToken = partyTokens[0];
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+
+  const members = memberData.map(m => {
+    const actor = game.actors.get(m.actorId);
+    return {
+      name: m.name,
+      hp: actor ? getActorHP(actor) : '?',
+      maxHp: actor ? getActorMaxHP(actor) : '?',
+      effects: actor ? actor.effects.filter(e => !e.disabled).map(e => e.name).join(', ') : 'None'
+    };
+  });
+
+  const content = `
+    <div class="party-status-chat">
+      <h3>Party Status: ${partyToken.name}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>HP</th>
+            <th>Effects</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${members.map(m => `
+            <tr>
+              <td>${m.name}</td>
+              <td>${m.hp}/${m.maxHp}</td>
+              <td>${m.effects || 'None'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  ChatMessage.create({
+    content,
+    whisper: [game.user.id]
+  });
+}
+
+/**
+ * Show party members in chat
+ */
+function showPartyMembers() {
+  const partyTokens = canvas.tokens.controlled.filter(t => {
+    const memberData = t.document.getFlag('party-vision', 'memberData');
+    return memberData && memberData.length > 0;
+  });
+
+  if (partyTokens.length === 0) {
+    const allPartyTokens = canvas.tokens.placeables.filter(t => {
+      const memberData = t.document.getFlag('party-vision', 'memberData');
+      return memberData && memberData.length > 0;
+    });
+
+    if (allPartyTokens.length === 0) {
+      ChatMessage.create({
+        content: '<p>No party tokens found on this scene.</p>',
+        whisper: [game.user.id]
+      });
+      return;
+    }
+
+    partyTokens.push(allPartyTokens[0]);
+  }
+
+  const partyToken = partyTokens[0];
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+
+  const content = `
+    <div class="party-members-chat">
+      <h3>Party Members: ${partyToken.name}</h3>
+      <ul>
+        ${memberData.map(m => `<li>${m.name}${m.isLeader ? ' (Leader)' : ''}</li>`).join('')}
+      </ul>
+      <p><strong>Total Members:</strong> ${memberData.length}</p>
+    </div>
+  `;
+
+  ChatMessage.create({
+    content,
+    whisper: [game.user.id]
+  });
+}
+
+/**
+ * Show party command help
+ */
+function showPartyHelp() {
+  const content = `
+    <div class="party-help-chat">
+      <h3>Party Vision Commands</h3>
+      <ul>
+        <li><strong>/party status</strong> - Show party health and status effects</li>
+        <li><strong>/party members</strong> - List all party members</li>
+        <li><strong>/party help</strong> - Show this help message</li>
+      </ul>
+    </div>
+  `;
+
+  ChatMessage.create({
+    content,
+    whisper: [game.user.id]
+  });
+}
+
+/**
+ * Get highest passive perception in party
+ * @param {Token} partyToken - The party token
+ * @returns {number|null} Highest passive perception
+ */
+function getHighestPassivePerception(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return null;
+
+  let highest = 0;
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    const pp = getActorPassivePerception(actor);
+    if (pp > highest) highest = pp;
+  }
+
+  return highest > 0 ? highest : null;
+}
+
+/**
+ * Get actor passive perception (system-agnostic)
+ * @param {Actor} actor - The actor
+ * @returns {number} Passive perception value
+ */
+function getActorPassivePerception(actor) {
+  // Try common systems
+  if (actor.system.skills?.prc?.passive) return actor.system.skills.prc.passive; // DnD5e
+  if (actor.system.attributes?.perception?.passive) return actor.system.attributes.perception.passive; // PF2e
+  if (actor.system.perception?.passive) return actor.system.perception.passive;
+
+  // Fallback: try to calculate from perception bonus
+  const perceptionBonus = actor.system.skills?.perception?.total || actor.system.skills?.prc?.total || 0;
+  return 10 + perceptionBonus;
+}
+
+/**
+ * Get actor HP (system-agnostic)
+ * @param {Actor} actor - The actor
+ * @returns {number} Current HP
+ */
+function getActorHP(actor) {
+  if (actor.system.attributes?.hp?.value !== undefined) return actor.system.attributes.hp.value;
+  if (actor.system.health?.value !== undefined) return actor.system.health.value;
+  if (actor.system.hp?.value !== undefined) return actor.system.hp.value;
+  return 0;
+}
+
+/**
+ * Get actor max HP (system-agnostic)
+ * @param {Actor} actor - The actor
+ * @returns {number} Max HP
+ */
+function getActorMaxHP(actor) {
+  if (actor.system.attributes?.hp?.max !== undefined) return actor.system.attributes.hp.max;
+  if (actor.system.health?.max !== undefined) return actor.system.health.max;
+  if (actor.system.hp?.max !== undefined) return actor.system.hp.max;
+  return 0;
+}
+
+/**
+ * Refresh health indicator on party token
+ * @param {Token} partyToken - The party token
+ */
+function refreshHealthIndicator(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+
+  let totalHP = 0;
+  let totalMaxHP = 0;
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    totalHP += getActorHP(actor);
+    totalMaxHP += getActorMaxHP(actor);
+  }
+
+  // Remove existing health bar
+  const existingBar = partyToken.children.find(c => c.name === 'partyHealthBar');
+  if (existingBar) {
+    partyToken.removeChild(existingBar);
+  }
+
+  if (totalMaxHP === 0) return;
+
+  // Create health bar graphic
+  const barWidth = partyToken.w;
+  const barHeight = 8;
+  const barY = partyToken.h + 5;
+
+  const healthBar = new PIXI.Graphics();
+  healthBar.name = 'partyHealthBar';
+
+  // Background
+  healthBar.beginFill(0x000000, 0.5);
+  healthBar.drawRect(0, barY, barWidth, barHeight);
+  healthBar.endFill();
+
+  // Health fill
+  const hpPercent = totalHP / totalMaxHP;
+  const fillWidth = barWidth * hpPercent;
+  const color = hpPercent > 0.5 ? 0x00ff00 : hpPercent > 0.25 ? 0xffaa00 : 0xff0000;
+
+  healthBar.beginFill(color, 0.8);
+  healthBar.drawRect(0, barY, fillWidth, barHeight);
+  healthBar.endFill();
+
+  partyToken.addChild(healthBar);
+}
+
+/**
+ * Refresh status effects on party token
+ * @param {Token} partyToken - The party token
+ */
+function refreshStatusEffects(partyToken) {
+  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return;
+
+  // Collect all unique effects
+  const effectMap = new Map();
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    for (const effect of actor.effects) {
+      if (effect.disabled) continue;
+
+      if (!effectMap.has(effect.name)) {
+        effectMap.set(effect.name, {
+          name: effect.name,
+          icon: effect.icon,
+          count: 0
+        });
+      }
+
+      effectMap.get(effect.name).count++;
+    }
+  }
+
+  // Remove existing effect indicators
+  const existingEffects = partyToken.children.filter(c => c.name === 'partyEffectIcon');
+  existingEffects.forEach(e => partyToken.removeChild(e));
+
+  // Add new effect indicators (max 5)
+  const effects = Array.from(effectMap.values()).slice(0, 5);
+  const iconSize = 20;
+  const iconSpacing = 22;
+  const startX = 5;
+  const startY = 5;
+
+  effects.forEach((effect, i) => {
+    const sprite = PIXI.Sprite.from(effect.icon || 'icons/svg/aura.svg');
+    sprite.name = 'partyEffectIcon';
+    sprite.width = iconSize;
+    sprite.height = iconSize;
+    sprite.x = startX + (i * iconSpacing);
+    sprite.y = startY;
+    sprite.alpha = 0.9;
+
+    partyToken.addChild(sprite);
+  });
+}
+
+// ==============================================
 // PUBLIC API EXPORTS
 // ==============================================
 
@@ -2430,6 +3408,20 @@ window.PartyVision = {
 
   // Formations
   FORMATION_PRESETS,
+
+  // Player-Friendly Features
+  openAllMemberSheets,
+  togglePartyCombat,
+  addPartyToCombat,
+  rollPartyInitiative,
+  showMemberAccessPanel,
+  showQuickSplitDialog,
+  showPartyStatus,
+  showPartyMembers,
+  showPartyHelp,
+  getHighestPassivePerception,
+  refreshHealthIndicator,
+  refreshStatusEffects,
 
   // Utility
   refreshAllPartyLighting: async function() {

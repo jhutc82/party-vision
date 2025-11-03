@@ -27,6 +27,17 @@ Party Vision solves the common problem in online TTRPGs where GMs must manually 
 - **Formation Presets**: Choose from multiple deployment formations (tight, wide, column, line, wedge)
 - **Smart Default Facing**: Remembers last deployment direction
 
+### Player-Friendly Features (v2.5.0)
+- **Double-Click to Open Sheets**: Double-click a party token to open all member character sheets at once
+- **Combat Toggle Integration**: Click the combat button on party token to add all members to combat tracker
+- **Auto-Roll Initiative**: Automatically rolls initiative for all party members (configurable)
+- **Member Access Panel**: Beautiful interactive panel showing member portraits, HP, and active effects
+- **Party Chat Commands**: Use `/party status`, `/party members`, or `/party help` for quick party info
+- **Health Indicator**: Visual health bar below party token with color-coded status
+- **Status Effect Icons**: Shows up to 5 active effects from party members on the token
+- **Passive Perception Display**: Highest passive perception shown in token tooltip
+- **Quick Split Member**: Right-click context menu to quickly split one member from party
+
 ## Requirements
 
 - **Foundry VTT**: Version 13 or higher
@@ -92,15 +103,59 @@ https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.js
 - Right-click party token → "Remove Member"
 - Select which character to remove
 
+### Player-Friendly Features (v2.5.0)
+
+**Double-Click to Open Sheets**:
+1. Double-click any party token
+2. All member character sheets open automatically
+3. Sheets cascade with offset positions for easy viewing
+
+**Combat Integration**:
+1. Select a party token
+2. Click the combat toggle button (sword icon) on the Token HUD
+3. All party members are added to the combat tracker
+4. Initiative is automatically rolled (if enabled in settings)
+
+**Member Access Panel**:
+1. Right-click party token → "View Party Members"
+2. See all members with portraits, HP, and active effects
+3. Click portrait to open individual character sheet
+4. Click split button to remove member from party
+
+**Party Chat Commands**:
+- Type `/party status` to see party health and effects
+- Type `/party members` to list all party members
+- Type `/party help` to see all available commands
+- All responses are whispered to you privately
+
+**Visual Indicators**:
+- **Health Bar**: Appears below party token showing aggregate HP
+  - Green when party is healthy (>50% HP)
+  - Orange when wounded (25-50% HP)
+  - Red when critically injured (<25% HP)
+- **Status Effects**: Up to 5 effect icons appear at top-left of token
+- **Passive Perception**: Hover over token to see highest PP value in tooltip
+
 ## Module Settings
 
 Access settings via **Configure Settings** → **Module Settings**:
 
+### Core Settings
 - **Show HUD Buttons**: Display Form/Deploy buttons on Token HUD
 - **Allow Players to Form/Deploy**: Let players use these functions (default: GM only)
 - **Auto-Deploy on Combat**: Automatically deploy party when combat starts
+- **Auto-Form on Combat End**: Automatically reform party after combat ends
+- **Animate Deployment**: Smoothly animate tokens when deploying
 - **Show Member Portraits**: Display character portraits around party token
 - **Show Range Indicator**: Display party's spread radius
+
+### Player Enhancement Settings (v2.5.0)
+- **Auto-Roll Initiative for Party**: Automatically roll initiative when adding party to combat
+- **Show Party Health Indicator**: Display aggregate health bar on party token
+- **Show Status Effect Indicators**: Display active status effects on party token
+- **Show Passive Perception**: Display highest passive perception in tooltip
+- **Double-Click Opens All Sheets**: Enable double-click to open all member sheets
+- **Enable Member Access Panel**: Enable member access panel feature
 
 ## Tips & Best Practices
 
@@ -109,6 +164,13 @@ Access settings via **Configure Settings** → **Module Settings**:
 3. **Grid Type**: Module works best with square grids (hex support limited)
 4. **Combat Transitions**: Enable "Auto-Deploy on Combat" for seamless exploration-to-combat flow
 5. **Tight Spaces**: Use the "Tight" formation preset when deploying in narrow corridors
+
+### Player Enhancement Tips (v2.5.0)
+6. **Quick Sheet Access**: Double-click is faster than right-click menu for opening all sheets
+7. **Combat Setup**: Use the combat toggle button instead of manually adding each member to combat
+8. **Party Status Checks**: Use `/party status` command to quickly check party health without opening sheets
+9. **Visual Feedback**: Enable all visual indicators (health bar, status effects) for at-a-glance party status
+10. **Member Management**: Use the Member Access Panel for a complete overview before splitting the party
 
 ## Keyboard Shortcuts
 
@@ -136,6 +198,24 @@ Access settings via **Configure Settings** → **Module Settings**:
 - Enable "Show Member Portraits" in module settings
 - Ensure actors have valid token images
 - Refresh the page if portraits don't appear immediately
+
+**Double-click not opening sheets?** (v2.5.0)
+- Ensure "Double-Click Opens All Sheets" is enabled in settings
+- Make sure you're clicking on the token itself, not empty space
+- Verify you have permission to view the character sheets
+- Try clicking slightly slower if detection isn't working
+
+**Health/status indicators not showing?** (v2.5.0)
+- Check that the respective settings are enabled in module configuration
+- Verify party members have HP values set
+- Refresh the token by moving it slightly or re-selecting it
+- Check console for any PIXI-related errors
+
+**Chat commands not working?** (v2.5.0)
+- Commands must start with `/party` (lowercase)
+- Ensure you're typing the command in the chat box, not a macro
+- Check that you have a party token on the current scene
+- Commands are whispered, check your chat filters
 
 ## Development
 
