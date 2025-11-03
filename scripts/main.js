@@ -1,6 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
-// Version 2.5.1 - Movement Type Selector
+// Version 2.5.2 - Bug Fixes & PF2e Improvements
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -179,8 +179,8 @@ Hooks.once('init', () => {
   });
 
   game.settings.register('party-vision', 'showPassivePerception', {
-    name: "Show Passive Perception",
-    hint: "Display the highest passive perception in the party token tooltip.",
+    name: "Show Perception",
+    hint: "Display the highest perception value in the party token tooltip on hover. Shows passive perception for D&D 5e, perception modifier for PF2e.",
     scope: 'world',
     config: true,
     type: Boolean,
@@ -396,54 +396,30 @@ Hooks.on('targetToken', (user, token, targeted) => {
 // Track when we handle a party token double-click
 let lastPartyDoubleClick = 0;
 
-// Hook into canvas for double-click detection
-Hooks.on('canvasReady', () => {
-  // Add double-click listener to canvas
-  canvas.stage.on('click', (event) => {
-    const now = Date.now();
-    const target = event.target;
+// Override Token._onClickLeft2 to intercept double-clicks on party tokens (do this once at init)
+Hooks.once('ready', () => {
+  const originalOnClickLeft2 = Token.prototype._onClickLeft2;
 
-    if (!target || !target.document) return;
-
+  Token.prototype._onClickLeft2 = function(event) {
     // Check if this is a party token
-    const memberData = target.document.getFlag?.('party-vision', 'memberData');
-    if (!memberData || memberData.length === 0) return;
+    const memberData = this.document.getFlag('party-vision', 'memberData');
 
-    if (!game.settings.get('party-vision', 'enableDoubleClickSheets')) return;
+    if (memberData && memberData.length > 0 && game.settings.get('party-vision', 'enableDoubleClickSheets')) {
+      console.log('Party Vision | Double-click detected on party token');
 
-    // Simple double-click detection with 400ms window
-    const lastClick = target._pvLastClick || 0;
-    target._pvLastClick = now;
-
-    if (now - lastClick < 400) {
       // Track that we handled a party double-click
-      lastPartyDoubleClick = now;
+      lastPartyDoubleClick = Date.now();
 
       // Open member sheets
-      openAllMemberSheets(target);
+      openAllMemberSheets(this);
 
-      // Prevent the event from bubbling
-      event.stopPropagation();
+      // Prevent default behavior (opening actor sheet)
+      return;
     }
-  });
-});
 
-// Prevent party token's own actor sheet from opening after double-click
-Hooks.on('renderActorSheet', (sheet, html, data) => {
-  // If a party double-click was just handled (within last 500ms), check if this is a party token's actor
-  const now = Date.now();
-  if (now - lastPartyDoubleClick > 500) return;
-
-  // Check if this actor belongs to a party token
-  const partyTokens = canvas?.tokens?.placeables.filter(t => {
-    const memberData = t.document.getFlag('party-vision', 'memberData');
-    return memberData && memberData.length > 0 && t.document.actorId === sheet.actor?.id;
-  }) || [];
-
-  // If this is a party token's actor sheet and we just double-clicked, close it
-  if (partyTokens.length > 0) {
-    sheet.close();
-  }
+    // Call original method for non-party tokens
+    return originalOnClickLeft2.call(this, event);
+  };
 });
 
 // Add context menu options for party tokens
@@ -495,7 +471,7 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
   if (!memberData || memberData.length === 0) return;
 
   // Find the combat toggle button
-  const combatButton = html.find('.control-icon[data-action="combat"]');
+  const combatButton = $(html).find('.control-icon[data-action="combat"]');
 
   if (combatButton.length) {
     // Override the click handler for party tokens
@@ -505,6 +481,63 @@ Hooks.on('renderTokenHUD', (app, html, data) => {
       event.stopPropagation();
       await togglePartyCombat(token);
     });
+  }
+
+  // Fix movement type selector for party tokens (PF2e)
+  if (game.system.id === 'pf2e') {
+    const movementData = token.document.getFlag('party-vision', 'movement');
+
+    console.log(`Party Vision | Party token detected, movement data:`, movementData);
+
+    if (movementData && movementData.types && movementData.types.length > 0) {
+      // Wait a moment for the HUD to fully render
+      setTimeout(() => {
+        // Try multiple possible selectors for the movement dropdown
+        let speedSelector = $(html).find('.attribute.speed select');
+
+        if (!speedSelector.length) {
+          speedSelector = $(html).find('select[name="movement"]');
+        }
+
+        if (!speedSelector.length) {
+          speedSelector = $(html).find('.speed select');
+        }
+
+        if (!speedSelector.length) {
+          // Try to find any select in the speed-related area
+          speedSelector = $(html).find('[data-action="speed"] select, .col.middle select');
+          console.log(`Party Vision | Trying fallback selector, found: ${speedSelector.length}`);
+        }
+
+        if (speedSelector.length) {
+          console.log(`Party Vision | Found movement selector, current options:`, speedSelector.find('option').map((i, el) => $(el).val()).get());
+
+          // Clear existing options
+          speedSelector.empty();
+
+          // Add movement types from party data
+          movementData.types.forEach(type => {
+            const option = $('<option></option>')
+              .attr('value', type)
+              .text(type.charAt(0).toUpperCase() + type.slice(1));
+            speedSelector.append(option);
+          });
+
+          // Set default selection
+          const defaultType = getDefaultMovementType();
+          if (movementData.types.includes(defaultType)) {
+            speedSelector.val(defaultType);
+          } else {
+            speedSelector.val(movementData.types[0]);
+          }
+
+          console.log(`Party Vision | ✅ Updated movement selector with types: ${movementData.types.join(', ')}`);
+        } else {
+          console.log(`Party Vision | ⚠️ Could not find movement selector in Token HUD`);
+          console.log(`Party Vision | Available elements:`, $(html).find('select').map((i, el) => el.className + ' ' + el.name).get());
+        }
+      }, 50);
+    }
   }
 });
 
@@ -535,7 +568,7 @@ Hooks.on('chatMessage', (chatLog, message, chatData) => {
   return false; // Prevent the message from being sent to chat
 });
 
-// Enhance token tooltips with passive perception
+// Enhance token tooltips with perception display (system-agnostic)
 Hooks.on('hoverToken', (token, hovered) => {
   if (!game.settings.get('party-vision', 'showPassivePerception')) return;
 
@@ -546,21 +579,36 @@ Hooks.on('hoverToken', (token, hovered) => {
   if (!tooltip) return;
 
   if (hovered) {
-    // Store original tooltip text if not already stored
-    if (!token._pvOriginalTooltip) {
-      token._pvOriginalTooltip = tooltip.text;
+    // Get the current tooltip text and strip any existing perception text
+    const currentText = tooltip.text || '';
+    const cleanText = currentText.replace(/\s*\|\s*(PP|Perception|Perc):\s*[+\-]?\d+/g, '');
+
+    // Store the clean original tooltip text
+    if (!token._pvOriginalTooltip || token._pvOriginalTooltip.match(/(PP|Perception|Perc):/)) {
+      token._pvOriginalTooltip = cleanText;
     }
 
-    const passivePerception = getHighestPassivePerception(token);
-    if (passivePerception) {
-      // Set tooltip with PP appended (using original text)
-      tooltip.text = `${token._pvOriginalTooltip} | PP: ${passivePerception}`;
+    const perceptionValue = getHighestPassivePerception(token);
+    if (perceptionValue !== null && perceptionValue !== undefined) {
+      // Format display based on game system
+      let perceptionLabel;
+      if (game.system.id === 'pf2e') {
+        // PF2e: show as modifier (e.g., "Perception: +5")
+        const sign = perceptionValue >= 0 ? '+' : '';
+        perceptionLabel = `Perception: ${sign}${perceptionValue}`;
+      } else {
+        // D&D 5e and others: show as passive perception (e.g., "PP: 15")
+        perceptionLabel = `PP: ${perceptionValue}`;
+      }
+
+      // Set tooltip with perception appended (using clean original text)
+      tooltip.text = `${token._pvOriginalTooltip} | ${perceptionLabel}`;
     }
   } else {
-    // Restore original tooltip when hover ends
-    if (token._pvOriginalTooltip) {
-      tooltip.text = token._pvOriginalTooltip;
-    }
+    // Restore original tooltip when hover ends (strip perception text just in case)
+    const cleanText = (token._pvOriginalTooltip || tooltip.text).replace(/\s*\|\s*(PP|Perception|Perc):\s*[+\-]?\d+/g, '');
+    token._pvOriginalTooltip = cleanText;
+    tooltip.text = cleanText;
   }
 });
 
@@ -568,6 +616,9 @@ Hooks.on('hoverToken', (token, hovered) => {
 Hooks.on('refreshToken', (token) => {
   const memberData = token.document?.getFlag('party-vision', 'memberData');
   if (!memberData || memberData.length === 0) return;
+
+  // Clear cached tooltip to ensure fresh PP display on next hover
+  delete token._pvOriginalTooltip;
 
   if (game.settings.get('party-vision', 'showHealthIndicator')) {
     refreshHealthIndicator(token);
@@ -1179,6 +1230,8 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
     height: maxHeight,
     displayName: CONST.TOKEN_DISPLAY_MODES.HOVER,
     displayBars: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER,
+    actorId: null, // Explicitly set to null - this is an unlinked token
+    actorLink: false, // Not linked to any actor
     sight: {
       enabled: true,
       range: 0,
@@ -1299,14 +1352,19 @@ function calculateMovementCapabilities(tokens) {
   let minSpeed = Infinity;
   const commonTypes = new Set();
   let firstMember = true;
-  
+
+  console.log(`Party Vision | Calculating movement for ${tokens.length} tokens`);
+
   tokens.forEach(token => {
     const actor = token.actor;
-    if (!actor) return;
-    
+    if (!actor) {
+      console.log(`Party Vision | Token ${token.name} has no actor, skipping`);
+      return;
+    }
+
     // Get movement speed (system-agnostic)
     let speed = 30; // Default
-    
+
     // Try various common locations for movement speed
     // PF2e v7.5+ uses system.movement.speeds
     if (actor.system.movement?.speeds?.land?.total !== undefined) {
@@ -1325,16 +1383,19 @@ function calculateMovementCapabilities(tokens) {
       // Alternative path
       speed = actor.system.movement.walk;
     }
-    
+
     minSpeed = Math.min(minSpeed, speed);
-    
+
     // Track movement types
     const types = [];
-    
+
     // PF2e v7.5+ movement types
     if (actor.system.movement?.speeds) {
+      console.log(`Party Vision | ${actor.name} has movement.speeds:`, Object.keys(actor.system.movement.speeds));
       Object.keys(actor.system.movement.speeds).forEach(type => {
         const speedData = actor.system.movement.speeds[type];
+        const total = speedData?.total || speedData?.value || 0;
+        console.log(`Party Vision | ${actor.name} - ${type}: ${total}`);
         if (speedData && (speedData.total > 0 || speedData.value > 0)) {
           types.push(type);
         }
@@ -1342,13 +1403,20 @@ function calculateMovementCapabilities(tokens) {
     }
     // Fallback to older path
     else if (actor.system.attributes?.movement) {
+      console.log(`Party Vision | ${actor.name} has attributes.movement:`, Object.keys(actor.system.attributes.movement));
       Object.keys(actor.system.attributes.movement).forEach(type => {
+        const value = actor.system.attributes.movement[type];
+        console.log(`Party Vision | ${actor.name} - ${type}: ${value}`);
         if (actor.system.attributes.movement[type] > 0) {
           types.push(type);
         }
       });
+    } else {
+      console.log(`Party Vision | ${actor.name} has no recognizable movement data structure`);
     }
-    
+
+    console.log(`Party Vision | ${actor.name} movement types:`, types);
+
     if (firstMember) {
       types.forEach(t => commonTypes.add(t));
       firstMember = false;
@@ -1362,11 +1430,15 @@ function calculateMovementCapabilities(tokens) {
       });
     }
   });
-  
-  return {
+
+  const result = {
     speed: minSpeed === Infinity ? 30 : minSpeed,
     types: Array.from(commonTypes)
   };
+
+  console.log(`Party Vision | Final movement calculation:`, result);
+
+  return result;
 }
 
 // ==============================================
@@ -2588,7 +2660,59 @@ async function cycleLightSource(partyToken) {
       }
     }
 
-    // STRATEGY 3: Fall back to original stored light
+    // STRATEGY 3: Check for light-emitting items (torches, lanterns, etc.)
+    if (!effectiveLight) {
+      try {
+        const items = actor.items || [];
+
+        for (const item of items) {
+          // Check if item is equipped/held
+          const equippedChecks = {
+            equipped: item.system?.equipped === true,
+            worn: item.system?.equipped?.carryType === "worn",
+            held: item.system?.equipped?.carryType === "held"
+          };
+
+          const activationChecks = {
+            activated: item.system?.activated,
+            active: item.system?.active,
+            quantity: (item.system?.quantity || item.system?.quantity?.value) > 0
+          };
+
+          const isEquipped = Object.values(equippedChecks).some(v => v);
+          const isActivated = Object.values(activationChecks).some(v => v);
+
+          // If item has light properties and is equipped/activated
+          if (item.system?.light) {
+            const itemLight = item.system.light;
+            const hasLight = (itemLight.bright > 0 || itemLight.dim > 0);
+
+            if ((isEquipped || isActivated) && hasLight) {
+              effectiveLight = {
+                bright: itemLight.bright || 0,
+                dim: itemLight.dim || 0,
+                angle: itemLight.angle || 360,
+                color: itemLight.color || null,
+                alpha: itemLight.alpha || 0.5,
+                animation: itemLight.animation || {},
+                coloration: itemLight.coloration || 1,
+                luminosity: itemLight.luminosity || 0.5,
+                attenuation: itemLight.attenuation || 0.5,
+                contrast: itemLight.contrast || 0,
+                saturation: itemLight.saturation || 0,
+                shadows: itemLight.shadows || 0
+              };
+              console.log(`Party Vision | Found light source from item: ${item.name}`);
+              break; // Use first light-emitting item found
+            }
+          }
+        }
+      } catch (e) {
+        // Silently continue
+      }
+    }
+
+    // STRATEGY 4: Fall back to original stored light
     if (!effectiveLight && member.originalLight) {
       if (member.originalLight.bright > 0 || member.originalLight.dim > 0) {
         effectiveLight = foundry.utils.deepClone(member.originalLight);
@@ -2598,8 +2722,10 @@ async function cycleLightSource(partyToken) {
     if (effectiveLight) {
       lightsources.push({
         name: member.name,
+        actorId: actor.id,
         light: effectiveLight
       });
+      console.log(`Party Vision | Found light source: ${member.name} - bright: ${effectiveLight.bright}, dim: ${effectiveLight.dim}, color: ${effectiveLight.color}`);
     }
   }
 
@@ -2607,6 +2733,8 @@ async function cycleLightSource(partyToken) {
     ui.notifications.info("No party members have light sources.");
     return;
   }
+
+  console.log(`Party Vision | Total light sources found: ${lightsources.length}`);
 
   // Sort light sources by brightness (brightest first)
   lightsources.sort((a, b) => {
@@ -2619,17 +2747,34 @@ async function cycleLightSource(partyToken) {
   const currentLight = partyToken.document.light;
   const isLightOff = !currentLight || (currentLight.bright === 0 && currentLight.dim === 0);
 
-  // Find current light source index
+  console.log(`Party Vision | Current party light - bright: ${currentLight?.bright}, dim: ${currentLight?.dim}, color: ${currentLight?.color}`);
+
+  // Find current light source index using more lenient matching
   let currentIndex = -1;
   if (!isLightOff) {
     for (let i = 0; i < lightsources.length; i++) {
       const source = lightsources[i];
-      if (source.light.bright === currentLight.bright &&
-          source.light.dim === currentLight.dim &&
-          source.light.color === currentLight.color) {
+
+      // Compare key properties with tolerance for minor differences
+      const brightMatch = (source.light.bright || 0) === (currentLight.bright || 0);
+      const dimMatch = (source.light.dim || 0) === (currentLight.dim || 0);
+
+      // Color comparison - handle null/"" equivalence
+      const sourceColor = source.light.color || null;
+      const currentColor = currentLight.color || null;
+      const colorMatch = sourceColor === currentColor;
+
+      console.log(`Party Vision | Comparing ${source.name}: bright=${brightMatch}, dim=${dimMatch}, color=${colorMatch}`);
+
+      if (brightMatch && dimMatch && colorMatch) {
         currentIndex = i;
+        console.log(`Party Vision | Match found at index ${i}: ${source.name}`);
         break;
       }
+    }
+
+    if (currentIndex === -1) {
+      console.log(`Party Vision | No exact match found, will cycle from beginning`);
     }
   }
 
@@ -2641,10 +2786,12 @@ async function cycleLightSource(partyToken) {
     // Currently off, go to brightest
     newLight = lightsources[0].light;
     message = `Party light: ${lightsources[0].name} (brightest)`;
+    console.log(`Party Vision | Cycling: Off -> ${lightsources[0].name}`);
   } else if (currentIndex >= 0 && currentIndex < lightsources.length - 1) {
     // Go to next light source
     newLight = lightsources[currentIndex + 1].light;
     message = `Party light: ${lightsources[currentIndex + 1].name}`;
+    console.log(`Party Vision | Cycling: ${lightsources[currentIndex].name} -> ${lightsources[currentIndex + 1].name}`);
   } else {
     // Last light source or unknown, turn off
     newLight = {
@@ -2655,8 +2802,10 @@ async function cycleLightSource(partyToken) {
       animation: { type: null }
     };
     message = "Party light: Off";
+    console.log(`Party Vision | Cycling: ${currentIndex >= 0 ? lightsources[currentIndex].name : 'Unknown'} -> Off`);
   }
 
+  console.log(`Party Vision | Applying new light: bright=${newLight.bright}, dim=${newLight.dim}`);
   await partyToken.document.update({ light: newLight });
   ui.notifications.info(message);
 }
@@ -2766,17 +2915,42 @@ Hooks.on('updateToken', (tokenDoc, change, options, userId) => {
 // COMBAT INTEGRATION
 // ==============================================
 
+// Intercept attempts to add party tokens to combat
+Hooks.on('preCreateCombatant', async (combatant, data, options, userId) => {
+  // Get the token being added
+  const tokenId = data.tokenId;
+  const tokenDoc = canvas.scene.tokens.get(tokenId);
+
+  if (!tokenDoc) return true;
+
+  // Check if this is a party token
+  const memberData = tokenDoc.getFlag('party-vision', 'memberData');
+  if (!memberData || memberData.length === 0) return true;
+
+  console.log('Party Vision | Intercepting party token combat addition');
+
+  // Prevent the party token itself from being added
+  const partyToken = canvas.tokens.get(tokenId);
+  if (partyToken) {
+    // Add all member actors instead
+    await addPartyToCombat(partyToken);
+  }
+
+  // Return false to prevent the party token combatant from being created
+  return false;
+});
+
 // Auto-deploy when adding party tokens to combat
 Hooks.on('createCombatant', async (combatant, options, userId) => {
   if (!game.user.isGM) return;
   if (!game.settings.get('party-vision', 'autoDeployOnCombat')) return;
-  
+
   const tokenDoc = combatant.token;
   if (!tokenDoc) return;
-  
+
   const memberData = tokenDoc.getFlag('party-vision', 'memberData');
   if (!memberData || memberData.length === 0) return;
-  
+
   const partyToken = canvas.tokens.get(tokenDoc.id);
   if (!partyToken) return;
   
@@ -3092,10 +3266,18 @@ async function addPartyToCombat(partyToken) {
     return;
   }
 
-  const combat = game.combat;
+  let combat = game.combat;
+
+  // If no active combat, create one
   if (!combat) {
-    ui.notifications.warn('No active combat encounter. Start combat first.');
-    return;
+    console.log('Party Vision | No active combat, creating new encounter');
+    const combatData = {
+      scene: canvas.scene.id,
+      active: true
+    };
+    const created = await Combat.create(combatData);
+    combat = created;
+    await created.activate();
   }
 
   console.log('Party Vision | Adding all party members to combat');
@@ -3104,11 +3286,17 @@ async function addPartyToCombat(partyToken) {
 
   for (const member of memberData) {
     const actor = game.actors.get(member.actorId);
-    if (!actor) continue;
+    if (!actor) {
+      console.log(`Party Vision | Actor not found for ${member.name}`);
+      continue;
+    }
 
     // Check if already in combat
     const existing = combat.combatants.find(c => c.actorId === actor.id);
-    if (existing) continue;
+    if (existing) {
+      console.log(`Party Vision | ${actor.name} already in combat, skipping`);
+      continue;
+    }
 
     combatantsToCreate.push({
       tokenId: partyToken.id,
@@ -3116,30 +3304,43 @@ async function addPartyToCombat(partyToken) {
       sceneId: canvas.scene.id,
       hidden: partyToken.document.hidden
     });
+
+    console.log(`Party Vision | Queuing ${actor.name} for combat`);
   }
 
   if (combatantsToCreate.length > 0) {
-    await combat.createEmbeddedDocuments('Combatant', combatantsToCreate);
+    console.log(`Party Vision | Creating ${combatantsToCreate.length} combatant(s)`);
+    const created = await combat.createEmbeddedDocuments('Combatant', combatantsToCreate);
+    console.log(`Party Vision | Successfully created combatants:`, created);
     ui.notifications.info(`Added ${combatantsToCreate.length} party member(s) to combat`);
 
     // Auto-roll initiative if enabled
     if (game.settings.get('party-vision', 'autoRollInitiative')) {
-      await rollPartyInitiative(combat, combatantsToCreate);
+      // Get the actual combatant IDs from created documents
+      const combatantIds = created.map(c => c.id);
+      await rollPartyInitiative(combat, combatantIds);
     }
+  } else {
+    ui.notifications.info('All party members are already in combat');
   }
 }
 
 /**
  * Roll initiative for all party members
  * @param {Combat} combat - The combat encounter
- * @param {Array} combatants - Array of combatant data
+ * @param {Array} combatantIds - Array of combatant IDs or combatant data objects
  */
-async function rollPartyInitiative(combat, combatants) {
+async function rollPartyInitiative(combat, combatantIds) {
   console.log('Party Vision | Rolling initiative for party members');
 
-  for (const combatantData of combatants) {
-    const combatant = combat.combatants.find(c => c.actorId === combatantData.actorId);
+  for (const id of combatantIds) {
+    // Handle both combatant IDs (strings) and combatant data objects
+    const combatant = typeof id === 'string'
+      ? combat.combatants.get(id)
+      : combat.combatants.find(c => c.actorId === id.actorId);
+
     if (combatant && !combatant.initiative) {
+      console.log(`Party Vision | Rolling initiative for ${combatant.name}`);
       await combatant.rollInitiative();
     }
   }
@@ -3421,9 +3622,10 @@ function showPartyHelp() {
 }
 
 /**
- * Get highest passive perception in party
+ * Get highest perception value in party (system-agnostic)
+ * Returns passive perception for D&D 5e, perception modifier for PF2e
  * @param {Token} partyToken - The party token
- * @returns {number|null} Highest passive perception
+ * @returns {number|null} Highest perception value
  */
 function getHighestPassivePerception(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
@@ -3443,17 +3645,29 @@ function getHighestPassivePerception(partyToken) {
 }
 
 /**
- * Get actor passive perception (system-agnostic)
+ * Get actor perception value (system-agnostic)
+ * For D&D 5e: returns passive perception (10 + modifier)
+ * For PF2e: returns perception modifier
  * @param {Actor} actor - The actor
- * @returns {number} Passive perception value
+ * @returns {number} Perception value
  */
 function getActorPassivePerception(actor) {
-  // Try common systems
-  if (actor.system.skills?.prc?.passive) return actor.system.skills.prc.passive; // DnD5e
-  if (actor.system.attributes?.perception?.passive) return actor.system.attributes.perception.passive; // PF2e
+  // D&D 5e - has passive perception
+  if (actor.system.skills?.prc?.passive) return actor.system.skills.prc.passive;
+
+  // PF2e - use perception modifier
+  if (game.system.id === 'pf2e') {
+    // Try various PF2e perception paths
+    if (actor.system.perception?.totalModifier !== undefined) return actor.system.perception.totalModifier;
+    if (actor.system.perception?.mod !== undefined) return actor.system.perception.mod;
+    if (actor.system.attributes?.perception?.totalModifier !== undefined) return actor.system.attributes.perception.totalModifier;
+    if (actor.system.attributes?.perception?.value !== undefined) return actor.system.attributes.perception.value;
+  }
+
+  // Generic passive perception fallback (other systems)
   if (actor.system.perception?.passive) return actor.system.perception.passive;
 
-  // Fallback: try to calculate from perception bonus
+  // Last resort: calculate passive perception D&D style
   const perceptionBonus = actor.system.skills?.perception?.total || actor.system.skills?.prc?.total || 0;
   return 10 + perceptionBonus;
 }

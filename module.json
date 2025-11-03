@@ -2,7 +2,7 @@
   "id": "party-vision",
   "title": "Party Vision",
   "description": "Enhanced party token system with individual vision, double-click to open sheets, combat toggle for all members, member access panel, chat commands, health indicators, status effects, passive perception display, and more player-friendly features.",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "authors": [
     {
       "name": "jhutc82",
@@ -34,7 +34,7 @@
   ],
   "url": "https://github.com/jhutc82/party-vision",
   "manifest": "https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.json",
-  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/v2.5.1.zip",
+  "download": "https://github.com/jhutc82/party-vision/archive/refs/tags/v2.5.2.zip",
   "license": "MIT",
   "readme": "https://github.com/jhutc82/party-vision/blob/main/README.md",
   "bugs": "https://github.com/jhutc82/party-vision/issues",

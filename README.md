@@ -6,6 +6,22 @@
 
 Party Vision solves the common problem in online TTRPGs where GMs must manually move multiple player tokens during dungeon crawls. This module allows you to combine multiple tokens into a single "Party Token" that moves as one unit while each player still sees from their character's unique vision (darkvision, blindsight, etc.).
 
+## Recent Updates (v2.5.2)
+
+**Critical Bug Fixes**:
+- ✅ Fixed Token HUD jQuery error (`html.find is not a function`)
+- ✅ Fixed Passive Perception tooltip showing permanently and duplicating
+- ✅ Fixed party tokens not adding members to combat tracker
+- ✅ Fixed "actor no longer present" error when double-clicking party tokens
+- ✅ Fixed light cycling not detecting equipped torches/lanterns
+
+**Pathfinder 2e Improvements**:
+- 🎲 Perception now shows modifiers (e.g., "Perception: +5") instead of passive perception
+- 🎲 Enhanced movement type detection and selector for PF2e v7.5+
+- 🎲 Better support for PF2e-specific data structures
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
 ## Features
 
 ### Core Features
@@ -35,7 +51,7 @@ Party Vision solves the common problem in online TTRPGs where GMs must manually 
 - **Party Chat Commands**: Use `/party status`, `/party members`, or `/party help` for quick party info
 - **Health Indicator**: Visual health bar below party token with color-coded status
 - **Status Effect Icons**: Shows up to 5 active effects from party members on the token
-- **Passive Perception Display**: Highest passive perception shown in token tooltip
+- **Perception Display**: Shows highest perception value in tooltip (passive perception for D&D 5e, perception modifier for PF2e)
 - **Quick Split Member**: Right-click context menu to quickly split one member from party
 
 ## Requirements
@@ -134,7 +150,7 @@ https://raw.githubusercontent.com/jhutc82/party-vision/refs/heads/main/module.js
   - Orange when wounded (25-50% HP)
   - Red when critically injured (<25% HP)
 - **Status Effects**: Up to 5 effect icons appear at top-left of token
-- **Passive Perception**: Hover over token to see highest PP value in tooltip
+- **Perception Tooltip**: Hover over token to see highest perception value (PP for D&D 5e, modifier for PF2e)
 
 ## Module Settings
 
@@ -153,7 +169,7 @@ Access settings via **Configure Settings** → **Module Settings**:
 - **Auto-Roll Initiative for Party**: Automatically roll initiative when adding party to combat
 - **Show Party Health Indicator**: Display aggregate health bar on party token
 - **Show Status Effect Indicators**: Display active status effects on party token
-- **Show Passive Perception**: Display highest passive perception in tooltip
+- **Show Perception**: Display highest perception value in tooltip (system-agnostic)
 - **Double-Click Opens All Sheets**: Enable double-click to open all member sheets
 - **Enable Member Access Panel**: Enable member access panel feature
 
@@ -216,6 +232,25 @@ Access settings via **Configure Settings** → **Module Settings**:
 - Ensure you're typing the command in the chat box, not a macro
 - Check that you have a party token on the current scene
 - Commands are whispered, check your chat filters
+
+**Party not adding to combat?** (v2.5.2)
+- Fixed in v2.5.2! Update to the latest version
+- Try clicking the combat toggle button on the Token HUD
+- Verify all party members have valid actor links
+- Check the console (F12) for detailed logging
+- Combat encounter will be created automatically if none exists
+
+**Light cycling not showing all sources?** (v2.5.2)
+- Fixed in v2.5.2! Torches and lanterns now detected properly
+- Make sure light-emitting items are equipped/held/activated
+- Right-click the Deploy button to cycle through lights
+- Check console (F12) to see which light sources are detected
+
+**Perception not showing correctly in PF2e?** (v2.5.2)
+- Fixed in v2.5.2! Now shows perception modifier instead of passive perception
+- Hover over party token to see the value
+- PF2e shows "Perception: +5", D&D 5e shows "PP: 15"
+- Enable "Show Perception" in module settings if disabled
 
 ## Development
 

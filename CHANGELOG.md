@@ -2,6 +2,47 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.5.2] - 2025-11-03
+
+### Fixed
+
+**Critical Bug Fixes**
+- **Token HUD jQuery Error**: Fixed `html.find is not a function` error when rendering Token HUD for party tokens (wrapped html parameter with jQuery)
+- **Passive Perception Display**: Fixed perception tooltip showing permanently and duplicating on hover
+  - Now only appears on mouseover and disappears on mouseout as intended
+  - Properly strips existing perception text to prevent accumulation
+- **Combat Tracker Integration**: Fixed party tokens not adding members to combat
+  - Added `preCreateCombatant` hook to intercept party token combat additions
+  - Automatically creates combatants for all party member actors instead of the token
+  - Auto-creates combat encounter if none exists
+  - Prevents "no associated actor" error message
+- **Double-Click Error**: Fixed "actor no longer present in world" error when double-clicking party tokens
+  - Overrides `Token.prototype._onClickLeft2` to intercept party token double-clicks
+  - Prevents default actor sheet opening behavior for party tokens
+  - Explicitly sets `actorId: null` and `actorLink: false` on party token creation
+- **Light Cycling Missing Torches**: Fixed light cycling not detecting equipped items like torches
+  - Added Strategy 3: Item Inspection to `cycleLightSource` function
+  - Now properly detects light from equipped/held/activated items (torches, lanterns, etc.)
+  - Matches detection logic used in party formation for consistency
+
+**Pathfinder 2e Improvements**
+- **Perception System**: Updated perception display to properly support PF2e rules
+  - PF2e now shows "Perception: +5" (modifier) instead of "PP: 15" (passive perception)
+  - D&D 5e continues to show passive perception values
+  - Checks `system.perception.totalModifier` and other PF2e-specific paths
+  - Module setting renamed to "Show Perception" to reflect system-agnostic behavior
+- **Movement Type Selector**: Enhanced movement type detection and display for PF2e
+  - Added comprehensive debugging for movement type calculation
+  - Improved selector population with multiple fallback strategies
+  - Better handling of PF2e v7.5+ movement structure (`system.movement.speeds`)
+
+### Technical Improvements
+- Added extensive console logging for debugging light detection and cycling
+- Improved light matching logic with more lenient comparison
+- Enhanced `addPartyToCombat` with auto-combat creation and duplicate checking
+- Updated `rollPartyInitiative` to handle both combatant IDs and data objects
+- Better error handling and user notifications throughout
+
 ## [2.5.1] - 2025-11-03
 
 ### Added
