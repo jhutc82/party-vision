@@ -1,0 +1,40 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# Node.js (if ever added)
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build artifacts and temporary files
+*.log
+*.tmp
+*.bak
+*.cache
+
+# Foundry VTT specific
+packs/*.db
+packs/_source/
+
+# Environment files
+.env
+.env.local
+.env.*.local
