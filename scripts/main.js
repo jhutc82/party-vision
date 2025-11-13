@@ -29,6 +29,35 @@ let followerOffsets = new Map();
 const pendingLightingUpdates = new Map(); // Map<partyTokenId, timeoutId>
 const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 
+// Debug mode flag (set to false in production)
+const DEBUG_MODE = false;
+
+// ==============================================
+// UTILITY FUNCTIONS
+// ==============================================
+
+/**
+ * Escape HTML special characters to prevent XSS attacks
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string
+ */
+function escapeHTML(str) {
+  if (typeof str !== 'string') return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Debug logging (only logs when DEBUG_MODE is true)
+ * @param {...any} args - Arguments to log
+ */
+function debugLog(...args) {
+  if (DEBUG_MODE) {
+    console.log(...args);
+  }
+}
+
 // ==============================================
 // INITIALIZATION
 // ==============================================
@@ -542,7 +571,7 @@ Hooks.on('chatMessage', (chatLog, message, chatData) => {
       break;
     default:
       ChatMessage.create({
-        content: `<p>Unknown party command: ${command}</p><p>Try /party help for available commands.</p>`,
+        content: `<p>Unknown party command: ${escapeHTML(command)}</p><p>Try /party help for available commands.</p>`,
         whisper: [game.user.id]
       });
   }
@@ -744,9 +773,9 @@ async function showFormPartyDialog() {
     const speed = getActorSpeed(actor);
     return `
       <div class="party-member" style="display: flex; align-items: center; padding: 8px; margin: 4px 0; background: rgba(0,0,0,0.2); border-radius: 4px;">
-        <img src="${actor.img}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; border: 2px solid #555;">
+        <img src="${escapeHTML(actor.img)}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 12px; border: 2px solid #555;">
         <div style="flex: 1;">
-          <div style="font-weight: bold; color: #ddd;">${actor.name}</div>
+          <div style="font-weight: bold; color: #ddd;">${escapeHTML(actor.name)}</div>
           <div style="font-size: 0.85em; color: #aaa;">
             ${speed} movement
           </div>
@@ -760,7 +789,7 @@ async function showFormPartyDialog() {
   // Formation presets dropdown - include custom formation if saved
   let formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
     const preset = FORMATION_PRESETS[key];
-    return `<option value="${key}">${preset.name}</option>`;
+    return `<option value="${escapeHTML(key)}">${escapeHTML(preset.name)}</option>`;
   }).join('');
   
   // Add saved custom formation option if it exists
@@ -898,20 +927,20 @@ async function showFormPartyDialog() {
           <label for="party-name">
             <i class="fas fa-tag"></i> Party Name
           </label>
-          <input type="text" id="party-name" name="partyName" value="${defaultName}" placeholder="Enter party name">
+          <input type="text" id="party-name" name="partyName" value="${escapeHTML(defaultName)}" placeholder="Enter party name">
           <div class="info-text">This name will be saved and reused when you form a party with these same members.</div>
         </div>
-        
+
         <div class="section">
           <label>
             <i class="fas fa-image"></i> Party Token Image
           </label>
           <div class="image-picker-container">
             <div class="image-preview">
-              <img id="party-image-preview" src="${defaultImage}" alt="Party Token">
+              <img id="party-image-preview" src="${escapeHTML(defaultImage)}" alt="Party Token">
             </div>
             <div class="image-input-group">
-              <input type="text" id="party-image" name="partyImage" value="${defaultImage}" placeholder="Token image path">
+              <input type="text" id="party-image" name="partyImage" value="${escapeHTML(defaultImage)}" placeholder="Token image path">
               <button type="button" id="browse-image">
                 <i class="fas fa-folder-open"></i> Browse
               </button>
@@ -1076,20 +1105,21 @@ async function showFormPartyDialog() {
  * @param {Object} customFormation - Optional custom formation data
  */
 async function formParty(tokens, leaderIndex, formationKey, partyName, partyImage, customFormation = null) {
-  if (tokens.length < 2) {
-    ui.notifications.warn("Need at least 2 tokens to form a party.");
-    return;
-  }
-  
-  const leaderToken = tokens[leaderIndex];
-  const leaderActor = leaderToken.actor;
-  
-  if (!leaderActor) {
-    ui.notifications.error("Leader token must have a linked actor.");
-    return;
-  }
-  
-  console.log(`Party Vision | Forming party "${partyName}" with ${tokens.length} members, leader: ${leaderActor.name}`);
+  try {
+    if (tokens.length < 2) {
+      ui.notifications.warn("Need at least 2 tokens to form a party.");
+      return;
+    }
+
+    const leaderToken = tokens[leaderIndex];
+    const leaderActor = leaderToken.actor;
+
+    if (!leaderActor) {
+      ui.notifications.error("Leader token must have a linked actor.");
+      return;
+    }
+
+    console.log(`Party Vision | Forming party "${partyName}" with ${tokens.length} members, leader: ${leaderActor.name}`);
   
   // Apply formation preset if not 'current'
   let positionedTokens = tokens;
@@ -1261,22 +1291,30 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
   
   ui.notifications.info(`Party formed: ${tokens.length} members with ${leaderActor.name} as leader!`);
   
-  // Select the new party token
-  if (partyToken) {
-    partyToken.control({ releaseOthers: true });
+    // Select the new party token
+    if (partyToken) {
+      partyToken.control({ releaseOthers: true });
+    }
+  } catch (error) {
+    console.error('Party Vision | Error forming party:', error);
+    ui.notifications.error(`Failed to form party: ${error.message}`);
   }
 }
 
 /**
  * Apply a formation preset to tokens
+ * NOTE: This function is deprecated and will be removed in a future version.
+ * Formation presets are now applied during deployment only.
  * @param {Array<Token>} tokens - Tokens to position
  * @param {number} leaderIndex - Index of the leader
  * @param {Object} preset - Formation preset data
- * @returns {Array<Token>} Tokens (unchanged, as this is preview only)
+ * @returns {Array<Token>} Tokens (unchanged)
+ * @deprecated
  */
 async function applyFormationPreset(tokens, leaderIndex, preset) {
-  // For now, return tokens as-is since formation is applied during deployment
-  // In future versions, this could move tokens before forming
+  // Return tokens as-is since formation is applied during deployment
+  // Kept for backwards compatibility but does nothing
+  console.warn('Party Vision | applyFormationPreset is deprecated and will be removed in future versions');
   return tokens;
 }
 
@@ -1455,9 +1493,9 @@ async function showDeployDialog(partyToken) {
     return `
       <div class="member-checkbox" style="display: flex; align-items: center; padding: 4px 6px; margin: 2px 0; background: rgba(0,0,0,0.2); border-radius: 3px;">
         <input type="checkbox" id="member-${index}" value="${index}" checked style="margin-right: 8px; transform: scale(1.1);">
-        <img src="${member.img}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
+        <img src="${escapeHTML(member.img)}" style="width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; border: 2px solid ${member.isLeader ? '#00ff88' : '#555'};">
         <label for="member-${index}" style="flex: 1; color: #ddd; cursor: pointer; font-size: 13px;">
-          ${member.name}${member.isLeader ? ' <i class="fas fa-star" style="color: #00ff88; font-size: 11px;"></i>' : ''}
+          ${escapeHTML(member.name)}${member.isLeader ? ' <i class="fas fa-star" style="color: #00ff88; font-size: 11px;"></i>' : ''}
         </label>
       </div>
     `;
@@ -1466,7 +1504,7 @@ async function showDeployDialog(partyToken) {
   // Formation presets dropdown
   let formationOptions = Object.keys(FORMATION_PRESETS).map(key => {
     const preset = FORMATION_PRESETS[key];
-    return `<option value="${key}">${preset.name} - ${preset.description}</option>`;
+    return `<option value="${escapeHTML(key)}">${escapeHTML(preset.name)} - ${escapeHTML(preset.description)}</option>`;
   }).join('');
   
   // Add saved custom formation if available
@@ -3213,33 +3251,38 @@ async function openAllMemberSheets(partyToken) {
  * @param {Token} partyToken - The party token
  */
 async function togglePartyCombat(partyToken) {
-  const memberData = partyToken.document.getFlag('party-vision', 'memberData');
-  if (!memberData || memberData.length === 0) {
-    ui.notifications.warn('No party members found');
-    return;
-  }
-
-  const combat = game.combat;
-  if (!combat) {
-    ui.notifications.warn('No active combat encounter');
-    return;
-  }
-
-  // Check if party is already in combat
-  const partyInCombat = combat.combatants.some(c =>
-    c.tokenId === partyToken.id
-  );
-
-  if (partyInCombat) {
-    // Remove from combat
-    const combatant = combat.combatants.find(c => c.tokenId === partyToken.id);
-    if (combatant) {
-      await combatant.delete();
-      ui.notifications.info('Removed party from combat');
+  try {
+    const memberData = partyToken.document.getFlag('party-vision', 'memberData');
+    if (!memberData || memberData.length === 0) {
+      ui.notifications.warn('No party members found');
+      return;
     }
-  } else {
-    // Add all members to combat
-    await addPartyToCombat(partyToken);
+
+    const combat = game.combat;
+    if (!combat) {
+      ui.notifications.warn('No active combat encounter');
+      return;
+    }
+
+    // Check if party is already in combat
+    const partyInCombat = combat.combatants.some(c =>
+      c.tokenId === partyToken.id
+    );
+
+    if (partyInCombat) {
+      // Remove from combat
+      const combatant = combat.combatants.find(c => c.tokenId === partyToken.id);
+      if (combatant) {
+        await combatant.delete();
+        ui.notifications.info('Removed party from combat');
+      }
+    } else {
+      // Add all members to combat
+      await addPartyToCombat(partyToken);
+    }
+  } catch (error) {
+    console.error('Party Vision | Error toggling party combat:', error);
+    ui.notifications.error(`Failed to toggle party combat: ${error.message}`);
   }
 }
 
