@@ -13,9 +13,14 @@ export const FORMATION_PRESETS = {
     name: "Tight (50%)",
     description: "Compress formation to 50% spacing",
     transform: (dx, dy) => {
-      const transformed = { 
-        dx: Math.round(dx * 0.5), 
-        dy: Math.round(dy * 0.5) 
+      // Input validation
+      if (typeof dx !== 'number' || typeof dy !== 'number' || !isFinite(dx) || !isFinite(dy)) {
+        return { dx: 0, dy: 0 };
+      }
+
+      const transformed = {
+        dx: Math.round(dx * 0.5),
+        dy: Math.round(dy * 0.5)
       };
       // Ensure at least some spacing if original position was non-zero
       if (transformed.dx === 0 && transformed.dy === 0 && (dx !== 0 || dy !== 0)) {
@@ -29,19 +34,33 @@ export const FORMATION_PRESETS = {
   wide: {
     name: "Wide (150%)",
     description: "Expand formation to 150% spacing",
-    transform: (dx, dy) => ({ 
-      dx: Math.round(dx * 1.5), 
-      dy: Math.round(dy * 1.5) 
-    })
+    transform: (dx, dy) => {
+      // Input validation
+      if (typeof dx !== 'number' || typeof dy !== 'number' || !isFinite(dx) || !isFinite(dy)) {
+        return { dx: 0, dy: 0 };
+      }
+      return {
+        dx: Math.round(dx * 1.5),
+        dy: Math.round(dy * 1.5)
+      };
+    }
   },
   
   column: {
     name: "Column",
     description: "Single-file line formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Scale spacing based on party size to keep formation compact
       // Small parties (2-3): 1 grid spacing
-      // Medium parties (4-5): 1.2 grid spacing  
+      // Medium parties (4-5): 1.2 grid spacing
       // Large parties (6+): 1.5 grid spacing
       const spacing = total <= 3 ? 1 : (total <= 5 ? 1.2 : 1.5);
       const center = (total - 1) / 2;
@@ -56,6 +75,14 @@ export const FORMATION_PRESETS = {
     name: "Line",
     description: "Horizontal line formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Scale spacing based on party size
       const spacing = total <= 3 ? 1 : (total <= 5 ? 1.2 : 1.5);
       const center = (total - 1) / 2;
@@ -70,15 +97,23 @@ export const FORMATION_PRESETS = {
     name: "Wedge",
     description: "V-shaped battle formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Dynamic wedge formation that scales with party size
       // Leader at front (dy negative), others form V behind
       const center = (total - 1) / 2;
       const offset = Math.abs(index - center);
-      
+
       // Scale horizontal and vertical spacing
       const hSpacing = total <= 3 ? 1 : (total <= 5 ? 1.2 : 1.5);
       const vSpacing = total <= 3 ? 1 : (total <= 5 ? 1.5 : 2);
-      
+
       return {
         dx: Math.round((index - center) * hSpacing),
         dy: Math.round(offset * vSpacing)
@@ -90,11 +125,19 @@ export const FORMATION_PRESETS = {
     name: "Circle",
     description: "Defensive circular formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Arrange party members in a circle
       // Radius scales with party size
       const radius = Math.max(2, Math.ceil(total / 3));
       const angle = (2 * Math.PI * index) / total;
-      
+
       return {
         dx: Math.round(radius * Math.cos(angle)),
         dy: Math.round(radius * Math.sin(angle))
@@ -106,13 +149,21 @@ export const FORMATION_PRESETS = {
     name: "Staggered",
     description: "Two-row staggered formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Alternate between front and back rows
       const spacing = total <= 3 ? 1 : (total <= 5 ? 1.2 : 1.5);
       const isBackRow = index % 2 === 0;
       const positionInRow = Math.floor(index / 2);
       const rowSize = Math.ceil(total / 2);
       const center = (rowSize - 1) / 2;
-      
+
       return {
         dx: Math.round((positionInRow - center) * spacing),
         dy: isBackRow ? 1 : 0
@@ -124,6 +175,14 @@ export const FORMATION_PRESETS = {
     name: "Box",
     description: "Square perimeter formation",
     transform: (dx, dy, index, total) => {
+      // Input validation
+      if (typeof index !== 'number' || typeof total !== 'number' || !isFinite(index) || !isFinite(total)) {
+        return { dx: 0, dy: 0 };
+      }
+      if (total <= 0 || index < 0 || index >= total) {
+        return { dx: 0, dy: 0 };
+      }
+
       // Arrange party in a square perimeter
       if (total <= 4) {
         // For very small parties, just make a simple square
@@ -135,12 +194,12 @@ export const FORMATION_PRESETS = {
         ];
         return positions[index] || { dx: 0, dy: 0 };
       }
-      
+
       // For larger parties, distribute around perimeter
       const side = Math.ceil(total / 4);
       const perimeter = side * 4;
       const spacing = 1.5;
-      
+
       if (index < side) {
         // Top side
         return { dx: Math.round((index - side/2) * spacing), dy: -side };

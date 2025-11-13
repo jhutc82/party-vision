@@ -1,6 +1,6 @@
 /* ==============================================
    PARTY VISION - STYLES
-   Version 2.5.1 - Movement Type Selector & Fixes
+   Version 2.5.2 - Bug Fixes & PF2e Improvements
    ============================================== */
 
 /* Token HUD Button Styles */
@@ -52,6 +52,8 @@
 }
 
 /* Form Party Dialog - Wider and responsive */
+/* Using class-based selector for better browser compatibility (fallback for :has()) */
+.dialog.window-app.party-vision-form-dialog,
 .dialog.window-app[data-appid] .window-content:has(.pv-form-party) {
   min-width: 550px;
   max-width: 700px;
@@ -59,6 +61,7 @@
 }
 
 /* Ensure the window header matches the content width */
+.dialog.window-app.party-vision-form-dialog .window-header,
 .dialog.window-app:has(.pv-form-party) .window-header {
   min-width: 550px;
   max-width: 700px;
@@ -66,6 +69,7 @@
 }
 
 /* Make the entire window responsive */
+.dialog.window-app.party-vision-form-dialog,
 .dialog.window-app:has(.pv-form-party) {
   min-width: 550px;
   max-width: 700px;
@@ -107,6 +111,8 @@
 
 .pv-form-party .form-group select {
   cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ddd' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -344,6 +350,13 @@
   overflow-y: auto;
   background: rgba(30, 30, 30, 0.95);
   color: #ddd;
+}
+
+/* Scrollbar styling with cross-browser support */
+.party-vision-split-dialog .member-list {
+  /* Firefox and modern browsers */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.2);
 }
 
 .party-vision-split-dialog .member-list::-webkit-scrollbar {
@@ -715,7 +728,13 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
-/* Scrollbar Styling for Member Panel */
+/* Scrollbar Styling for Member Panel - cross-browser support */
+.party-member-panel .member-list {
+  /* Firefox and modern browsers */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.2);
+}
+
 .party-member-panel .member-list::-webkit-scrollbar {
   width: 8px;
 }

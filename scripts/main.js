@@ -34,7 +34,7 @@ const LIGHTING_UPDATE_DEBOUNCE_MS = 100; // Wait 100ms before actually updating
 // ==============================================
 
 Hooks.once('init', () => {
-  console.log('Party Vision | Initializing Enhanced Module v2.5.1');
+  console.log('Party Vision | Initializing Enhanced Module v2.5.2');
   
   // Explicit check for Foundry version
   if (!game || !game.version) {
@@ -217,9 +217,9 @@ Hooks.once('init', () => {
   console.log('Party Vision | Settings registered successfully');
   
   // --- CHECK DEPENDENCIES ---
-  
-  // Check for libWrapper
-  if (typeof libWrapper !== 'function') {
+
+  // Check for libWrapper (supports v1.12+ which is an object, not a function)
+  if (!game.modules.get('lib-wrapper')?.active) {
     console.error('Party Vision | libWrapper not found! This module requires libWrapper to function.');
     ui.notifications.error('Party Vision requires the libWrapper module. Please install it from the Foundry module browser.');
     return;
@@ -396,30 +396,34 @@ Hooks.on('targetToken', (user, token, targeted) => {
 // Track when we handle a party token double-click
 let lastPartyDoubleClick = 0;
 
-// Override Token._onClickLeft2 to intercept double-clicks on party tokens (do this once at init)
+// Wrap Token._onClickLeft2 to intercept double-clicks on party tokens using libWrapper
 Hooks.once('ready', () => {
-  const originalOnClickLeft2 = Token.prototype._onClickLeft2;
+  try {
+    libWrapper.register('party-vision', 'Token.prototype._onClickLeft2', function(wrapped, event) {
+      // Check if this is a party token
+      const memberData = this.document.getFlag('party-vision', 'memberData');
 
-  Token.prototype._onClickLeft2 = function(event) {
-    // Check if this is a party token
-    const memberData = this.document.getFlag('party-vision', 'memberData');
+      if (memberData && memberData.length > 0 && game.settings.get('party-vision', 'enableDoubleClickSheets')) {
+        console.log('Party Vision | Double-click detected on party token');
 
-    if (memberData && memberData.length > 0 && game.settings.get('party-vision', 'enableDoubleClickSheets')) {
-      console.log('Party Vision | Double-click detected on party token');
+        // Track that we handled a party double-click
+        lastPartyDoubleClick = Date.now();
 
-      // Track that we handled a party double-click
-      lastPartyDoubleClick = Date.now();
+        // Open member sheets
+        openAllMemberSheets(this);
 
-      // Open member sheets
-      openAllMemberSheets(this);
+        // Prevent default behavior (opening actor sheet)
+        return;
+      }
 
-      // Prevent default behavior (opening actor sheet)
-      return;
-    }
+      // Call original method for non-party tokens
+      return wrapped(event);
+    }, 'MIXED');
 
-    // Call original method for non-party tokens
-    return originalOnClickLeft2.call(this, event);
-  };
+    console.log('Party Vision | Double-click handler registered successfully');
+  } catch (e) {
+    console.error('Party Vision | Failed to register double-click handler:', e);
+  }
 });
 
 // Add context menu options for party tokens
@@ -437,30 +441,8 @@ Hooks.on('getTokenConfigHeaderButtons', (app, buttons) => {
   }
 });
 
-// Extend token context menu
-Hooks.on('getTokenHUDMenuItems', (token, buttons) => {
-  const memberData = token.document?.getFlag('party-vision', 'memberData');
-
-  if (memberData && memberData.length > 0) {
-    buttons.push({
-      name: 'Open All Sheets',
-      icon: '<i class="fas fa-scroll"></i>',
-      callback: () => openAllMemberSheets(token)
-    });
-
-    buttons.push({
-      name: 'View Party Members',
-      icon: '<i class="fas fa-users"></i>',
-      callback: () => showMemberAccessPanel(token)
-    });
-
-    buttons.push({
-      name: 'Split Single Member',
-      icon: '<i class="fas fa-user-minus"></i>',
-      callback: () => showQuickSplitDialog(token)
-    });
-  }
-});
+// Note: The 'getTokenHUDMenuItems' hook doesn't exist in Foundry VTT
+// Context menu functionality is provided through other hooks and HUD buttons
 
 // Enhance token HUD to add combat toggle functionality
 Hooks.on('renderTokenHUD', (app, html, data) => {
@@ -694,8 +676,14 @@ async function savePartyConfig(tokens, partyName, partyImage, leaderIndex = 0, c
  * @returns {number} Movement speed
  */
 function getActorSpeed(actor) {
+  // Input validation
+  if (!actor?.system) {
+    console.warn('Party Vision | getActorSpeed called with invalid actor');
+    return 30; // Default speed
+  }
+
   let speed = 30; // Default
-  
+
   // PF2e v7.5+ uses system.movement.speeds
   if (actor.system.movement?.speeds?.land?.total !== undefined) {
     speed = actor.system.movement.speeds.land.total;
@@ -708,7 +696,7 @@ function getActorSpeed(actor) {
   } else if (actor.system.movement?.walk !== undefined) {
     speed = actor.system.movement.walk;
   }
-  
+
   return speed;
 }
 
@@ -3652,6 +3640,12 @@ function getHighestPassivePerception(partyToken) {
  * @returns {number} Perception value
  */
 function getActorPassivePerception(actor) {
+  // Input validation
+  if (!actor?.system) {
+    console.warn('Party Vision | getActorPassivePerception called with invalid actor');
+    return 10; // Default perception
+  }
+
   // D&D 5e - has passive perception
   if (actor.system.skills?.prc?.passive) return actor.system.skills.prc.passive;
 
@@ -3678,6 +3672,12 @@ function getActorPassivePerception(actor) {
  * @returns {number} Current HP
  */
 function getActorHP(actor) {
+  // Input validation
+  if (!actor?.system) {
+    console.warn('Party Vision | getActorHP called with invalid actor');
+    return 0;
+  }
+
   if (actor.system.attributes?.hp?.value !== undefined) return actor.system.attributes.hp.value;
   if (actor.system.health?.value !== undefined) return actor.system.health.value;
   if (actor.system.hp?.value !== undefined) return actor.system.hp.value;
@@ -3690,6 +3690,12 @@ function getActorHP(actor) {
  * @returns {number} Max HP
  */
 function getActorMaxHP(actor) {
+  // Input validation
+  if (!actor?.system) {
+    console.warn('Party Vision | getActorMaxHP called with invalid actor');
+    return 0;
+  }
+
   if (actor.system.attributes?.hp?.max !== undefined) return actor.system.attributes.hp.max;
   if (actor.system.health?.max !== undefined) return actor.system.health.max;
   if (actor.system.hp?.max !== undefined) return actor.system.hp.max;
