@@ -1,6 +1,6 @@
 // ==============================================
 // PARTY VISION MODULE - MAIN SCRIPT
-// Version 2.5.2 - Bug Fixes & PF2e Improvements
+// Version 2.6.0 - System-Specific Enhancements
 // ==============================================
 
 import { FORMATION_PRESETS } from './formations.js';
@@ -265,6 +265,15 @@ Hooks.once('init', () => {
   game.settings.register('party-vision', 'smartFormationOrdering', {
     name: "Smart Formation Ordering",
     hint: "Automatically arrange party members in formations with leader first, then tanks/defenders, strikers, and casters/support in back. Works with D&D 5e and PF2e.",
+    scope: 'world',
+    config: true,
+    type: Boolean,
+    default: true
+  });
+
+  game.settings.register('party-vision', 'showHelpActionChains', {
+    name: "Show Help/Aid Action Chains",
+    hint: "After deploying during combat, show visual lines indicating which party members can use the Help action (D&D 5e, 5ft) or Aid action (PF2e, 10ft reach). Lines auto-disappear after 10 seconds.",
     scope: 'world',
     config: true,
     type: Boolean,
@@ -1992,6 +2001,97 @@ async function deployParty(partyToken, formationKey, direction, formNewParty = f
     await new Promise(resolve => setTimeout(resolve, 200));
     await showFormPartyDialog();
   }
+
+  // Show help/aid action visualization if enabled and in combat
+  if (game.combat?.active && game.settings.get('party-vision', 'showHelpActionChains')) {
+    await showHelpActionVisualization(deployedTokens);
+  }
+}
+
+/**
+ * Show help/aid action visualization (D&D 5e help action or PF2e aid action)
+ * @param {Array<Token>} tokens - The deployed tokens
+ */
+async function showHelpActionVisualization(tokens) {
+  if (!tokens || tokens.length < 2) return;
+
+  const systemId = game.system.id;
+  const helpDistance = systemId === 'dnd5e' ? 5 : 10; // 5ft for D&D 5e, 10ft (reach) for PF2e
+  const gridSize = canvas.grid.size;
+  const helpDistancePixels = (helpDistance / 5) * gridSize; // Convert feet to pixels
+
+  const pairs = [];
+
+  // Find all token pairs within help distance
+  for (let i = 0; i < tokens.length; i++) {
+    for (let j = i + 1; j < tokens.length; j++) {
+      const token1 = tokens[i];
+      const token2 = tokens[j];
+
+      const distance = Math.sqrt(
+        Math.pow(token2.center.x - token1.center.x, 2) +
+        Math.pow(token2.center.y - token1.center.y, 2)
+      );
+
+      if (distance <= helpDistancePixels) {
+        pairs.push({ token1, token2, distance });
+      }
+    }
+  }
+
+  if (pairs.length === 0) {
+    if (systemId === 'dnd5e') {
+      ui.notifications.info('No party members are within 5 feet to use the Help action');
+    } else if (systemId === 'pf2e') {
+      ui.notifications.info('No party members are within reach to use the Aid action');
+    }
+    return;
+  }
+
+  // Show notification
+  const actionName = systemId === 'dnd5e' ? 'Help' : 'Aid';
+  ui.notifications.info(`${pairs.length} ${actionName} action pair${pairs.length > 1 ? 's' : ''} available! Lines shown on map.`);
+
+  // Draw visual lines on canvas
+  const graphics = new PIXI.Graphics();
+  graphics.name = 'helpActionLines';
+
+  for (const pair of pairs) {
+    graphics.lineStyle(3, 0x00ff88, 0.6);
+    graphics.moveTo(pair.token1.center.x, pair.token1.center.y);
+    graphics.lineTo(pair.token2.center.x, pair.token2.center.y);
+
+    // Add arrow markers
+    const angle = Math.atan2(
+      pair.token2.center.y - pair.token1.center.y,
+      pair.token2.center.x - pair.token1.center.x
+    );
+    const arrowSize = 10;
+    const midX = (pair.token1.center.x + pair.token2.center.x) / 2;
+    const midY = (pair.token1.center.y + pair.token2.center.y) / 2;
+
+    graphics.beginFill(0x00ff88, 0.8);
+    graphics.drawPolygon([
+      midX,
+      midY,
+      midX - arrowSize * Math.cos(angle - Math.PI / 6),
+      midY - arrowSize * Math.sin(angle - Math.PI / 6),
+      midX - arrowSize * Math.cos(angle + Math.PI / 6),
+      midY - arrowSize * Math.sin(angle + Math.PI / 6)
+    ]);
+    graphics.endFill();
+  }
+
+  canvas.controls.addChild(graphics);
+
+  // Auto-remove after 10 seconds
+  setTimeout(() => {
+    const existingGraphics = canvas.controls.children.find(c => c.name === 'helpActionLines');
+    if (existingGraphics) {
+      canvas.controls.removeChild(existingGraphics);
+      existingGraphics.destroy();
+    }
+  }, 10000);
 }
 
 /**
@@ -3461,27 +3561,86 @@ async function showMemberAccessPanel(partyToken) {
     return;
   }
 
+  const systemId = game.system.id;
+
   const members = memberData.map(m => {
     const actor = game.actors.get(m.actorId);
-    return {
+    const data = {
       ...m,
       actor,
       hp: actor ? getActorHP(actor) : null,
       maxHp: actor ? getActorMaxHP(actor) : null,
       effects: actor ? Array.from(actor.effects).filter(e => !e.disabled) : []
     };
+
+    // D&D 5e specific data
+    if (systemId === 'dnd5e' && actor) {
+      data.inspiration = getActorInspiration(actor);
+      data.exhaustion = getActorExhaustion(actor);
+    }
+
+    // PF2e specific data
+    if (systemId === 'pf2e' && actor) {
+      data.explorationActivity = getActorExplorationActivity(actor);
+      data.bulk = getActorBulk(actor);
+    }
+
+    return data;
   }).filter(m => m.actor); // Only include valid actors
+
+  // PF2e exploration activities
+  const pf2eActivities = [
+    { value: '', label: 'None' },
+    { value: 'avoid-notice', label: 'Avoid Notice' },
+    { value: 'defend', label: 'Defend' },
+    { value: 'detect-magic', label: 'Detect Magic' },
+    { value: 'follow-the-expert', label: 'Follow the Expert' },
+    { value: 'investigate', label: 'Investigate' },
+    { value: 'repeat-a-spell', label: 'Repeat a Spell' },
+    { value: 'scout', label: 'Scout' },
+    { value: 'search', label: 'Search' },
+    { value: 'track', label: 'Track' }
+  ];
 
   const content = `
     <div class="party-member-panel">
       <h3>Party Members</h3>
+      ${systemId === 'pf2e' ? `
+        <div class="party-bulk-info" style="margin: 10px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+          <strong>Party Bulk:</strong> ${getPartyBulk(memberData).current.toFixed(1)} / ${getPartyBulk(memberData).max.toFixed(1)}
+        </div>
+      ` : ''}
       <div class="member-list">
         ${members.map((m, i) => `
           <div class="member-item" data-index="${i}">
             <img src="${sanitizeImageURL(m.img)}" alt="${escapeHTML(m.name)}" class="member-portrait">
             <div class="member-info">
-              <div class="member-name">${escapeHTML(m.name)}</div>
+              <div class="member-name">
+                ${escapeHTML(m.name)}
+                ${systemId === 'dnd5e' && m.inspiration ? '<i class="fas fa-star" title="Has Inspiration" style="color: gold; margin-left: 5px;"></i>' : ''}
+              </div>
               <div class="member-hp">HP: ${m.hp}/${m.maxHp}</div>
+              ${systemId === 'dnd5e' && m.exhaustion > 0 ? `
+                <div class="member-exhaustion" style="color: #ff6b6b;">
+                  <i class="fas fa-tired"></i> Exhaustion: ${m.exhaustion}
+                </div>
+              ` : ''}
+              ${systemId === 'pf2e' && m.bulk ? `
+                <div class="member-bulk" style="font-size: 0.9em; ${m.bulk.encumbered ? 'color: #ff6b6b;' : ''}">
+                  <i class="fas fa-weight-hanging"></i> Bulk: ${m.bulk.current.toFixed(1)}/${m.bulk.max.toFixed(1)}
+                  ${m.bulk.encumbered ? ' (Encumbered)' : ''}
+                </div>
+              ` : ''}
+              ${systemId === 'pf2e' ? `
+                <div class="member-exploration" style="margin-top: 5px;">
+                  <label style="font-size: 0.85em; display: block; margin-bottom: 2px;">Exploration Activity:</label>
+                  <select class="exploration-activity" data-actor-id="${m.actorId}" style="width: 100%; padding: 2px; background: rgba(0,0,0,0.5); color: white; border: 1px solid #555;">
+                    ${pf2eActivities.map(a => `
+                      <option value="${a.value}" ${m.explorationActivity === a.value ? 'selected' : ''}>${a.label}</option>
+                    `).join('')}
+                  </select>
+                </div>
+              ` : ''}
               ${m.effects.length > 0 ? `
                 <div class="member-effects">
                   ${m.effects.map(e => `<span class="effect-icon" title="${escapeHTML(e.name)}"><i class="${sanitizeClassName(e.icon || 'fas fa-circle')}"></i></span>`).join('')}
@@ -3489,6 +3648,11 @@ async function showMemberAccessPanel(partyToken) {
               ` : ''}
             </div>
             <div class="member-actions">
+              ${systemId === 'dnd5e' ? `
+                <button class="toggle-inspiration" data-actor-id="${m.actorId}" title="${m.inspiration ? 'Remove' : 'Grant'} Inspiration">
+                  <i class="fas fa-star" style="color: ${m.inspiration ? 'gold' : '#666'};"></i>
+                </button>
+              ` : ''}
               <button class="open-sheet" data-actor-id="${m.actorId}" title="Open Sheet">
                 <i class="fas fa-scroll"></i>
               </button>
@@ -3522,6 +3686,32 @@ async function showMemberAccessPanel(partyToken) {
         const index = parseInt(e.currentTarget.dataset.index);
         await splitAndDeployMembers(partyToken, [index], 'custom', 'north', false);
         dialog.close();
+      });
+
+      // D&D 5e: Toggle inspiration
+      html.find('.toggle-inspiration').on('click', async (e) => {
+        const actorId = e.currentTarget.dataset.actorId;
+        const actor = game.actors.get(actorId);
+        if (!actor || game.system.id !== 'dnd5e') return;
+
+        const currentInspiration = getActorInspiration(actor);
+        await actor.update({ 'system.attributes.inspiration': !currentInspiration });
+
+        // Refresh the panel
+        dialog.close();
+        showMemberAccessPanel(partyToken);
+      });
+
+      // PF2e: Change exploration activity
+      html.find('.exploration-activity').on('change', async (e) => {
+        const actorId = e.currentTarget.dataset.actorId;
+        const actor = game.actors.get(actorId);
+        const activity = e.currentTarget.value;
+
+        if (actor && game.system.id === 'pf2e') {
+          await setActorExplorationActivity(actor, activity);
+          ui.notifications.info(`${actor.name} is now ${activity || 'doing nothing'} during exploration`);
+        }
       });
     }
   }, {
@@ -3817,6 +4007,88 @@ function getActorMaxHP(actor) {
 }
 
 /**
+ * Get actor inspiration status (D&D 5e)
+ * @param {Actor} actor - The actor
+ * @returns {boolean} Whether actor has inspiration
+ */
+function getActorInspiration(actor) {
+  if (!actor?.system || game.system.id !== 'dnd5e') return false;
+  return actor.system.attributes?.inspiration === true;
+}
+
+/**
+ * Get actor exhaustion level (D&D 5e)
+ * @param {Actor} actor - The actor
+ * @returns {number} Exhaustion level (0-6)
+ */
+function getActorExhaustion(actor) {
+  if (!actor?.system || game.system.id !== 'dnd5e') return 0;
+  return actor.system.attributes?.exhaustion || 0;
+}
+
+/**
+ * Get actor exploration activity (PF2e)
+ * @param {Actor} actor - The actor
+ * @returns {string|null} Current exploration activity
+ */
+function getActorExplorationActivity(actor) {
+  if (!actor || game.system.id !== 'pf2e') return null;
+  // Check for flag or stored exploration activity
+  return actor.getFlag('party-vision', 'explorationActivity') || null;
+}
+
+/**
+ * Set actor exploration activity (PF2e)
+ * @param {Actor} actor - The actor
+ * @param {string} activity - The exploration activity
+ */
+async function setActorExplorationActivity(actor, activity) {
+  if (!actor || game.system.id !== 'pf2e') return;
+  await actor.setFlag('party-vision', 'explorationActivity', activity);
+}
+
+/**
+ * Get actor bulk (PF2e)
+ * @param {Actor} actor - The actor
+ * @returns {Object} Bulk data with current and max
+ */
+function getActorBulk(actor) {
+  if (!actor?.system || game.system.id !== 'pf2e') {
+    return { current: 0, max: 0, encumbered: false };
+  }
+
+  const bulk = actor.system.attributes?.bulk || {};
+  return {
+    current: bulk.value || 0,
+    max: bulk.max || 0,
+    encumbered: bulk.encumbered || false
+  };
+}
+
+/**
+ * Get party total bulk (PF2e)
+ * @param {Array} memberData - Array of party member data
+ * @returns {Object} Total bulk data
+ */
+function getPartyBulk(memberData) {
+  if (game.system.id !== 'pf2e') return { current: 0, max: 0 };
+
+  let totalCurrent = 0;
+  let totalMax = 0;
+
+  for (const member of memberData) {
+    const actor = game.actors.get(member.actorId);
+    if (!actor) continue;
+
+    const bulk = getActorBulk(actor);
+    totalCurrent += bulk.current;
+    totalMax += bulk.max;
+  }
+
+  return { current: totalCurrent, max: totalMax };
+}
+
+/**
  * Get character role/class for smart formation ordering
  * @param {Actor} actor - The actor
  * @returns {string} Role: 'tank', 'striker', 'support', or 'unknown'
@@ -3988,10 +4260,19 @@ function refreshStatusEffects(partyToken) {
 
   // Collect all unique effects
   const effectMap = new Map();
+  let maxExhaustion = 0;
 
   for (const member of memberData) {
     const actor = game.actors.get(member.actorId);
     if (!actor) continue;
+
+    // D&D 5e: Track exhaustion
+    if (game.system.id === 'dnd5e') {
+      const exhaustion = getActorExhaustion(actor);
+      if (exhaustion > maxExhaustion) {
+        maxExhaustion = exhaustion;
+      }
+    }
 
     for (const effect of actor.effects) {
       if (effect.disabled) continue;
@@ -4009,15 +4290,50 @@ function refreshStatusEffects(partyToken) {
   }
 
   // Remove existing effect indicators
-  const existingEffects = partyToken.children.filter(c => c.name === 'partyEffectIcon');
+  const existingEffects = partyToken.children.filter(c => c.name === 'partyEffectIcon' || c.name === 'partyExhaustionIcon');
   existingEffects.forEach(e => partyToken.removeChild(e));
 
-  // Add new effect indicators (max 5)
-  const effects = Array.from(effectMap.values()).slice(0, 5);
+  // Add exhaustion indicator for D&D 5e (if present)
+  let startIconIndex = 0;
   const iconSize = 20;
   const iconSpacing = 22;
   const startX = 5;
   const startY = 5;
+
+  if (game.system.id === 'dnd5e' && maxExhaustion > 0) {
+    try {
+      // Create exhaustion icon
+      const exhaustionSprite = PIXI.Sprite.from('icons/svg/skull.svg');
+      exhaustionSprite.name = 'partyExhaustionIcon';
+      exhaustionSprite.width = iconSize;
+      exhaustionSprite.height = iconSize;
+      exhaustionSprite.x = startX;
+      exhaustionSprite.y = startY;
+      exhaustionSprite.alpha = 0.9;
+      exhaustionSprite.tint = 0xff6b6b; // Red tint
+
+      // Add exhaustion level text
+      const exhaustionText = new PIXI.Text(maxExhaustion.toString(), {
+        fontSize: 12,
+        fill: 0xffffff,
+        fontWeight: 'bold',
+        stroke: 0x000000,
+        strokeThickness: 2
+      });
+      exhaustionText.x = iconSize - 8;
+      exhaustionText.y = iconSize - 12;
+      exhaustionSprite.addChild(exhaustionText);
+
+      partyToken.addChild(exhaustionSprite);
+      startIconIndex = 1; // Start other effects after exhaustion icon
+    } catch (error) {
+      console.warn('Party Vision | Failed to create exhaustion icon', error);
+    }
+  }
+
+  // Add new effect indicators (max 5, or 4 if exhaustion is shown)
+  const maxEffects = maxExhaustion > 0 ? 4 : 5;
+  const effects = Array.from(effectMap.values()).slice(0, maxEffects);
 
   effects.forEach((effect, i) => {
     // Sanitize icon URL to prevent loading malicious resources
@@ -4027,7 +4343,7 @@ function refreshStatusEffects(partyToken) {
       sprite.name = 'partyEffectIcon';
       sprite.width = iconSize;
       sprite.height = iconSize;
-      sprite.x = startX + (i * iconSpacing);
+      sprite.x = startX + ((i + startIconIndex) * iconSpacing);
       sprite.y = startY;
       sprite.alpha = 0.9;
 
@@ -4086,6 +4402,15 @@ window.PartyVision = {
   // Movement
   getDefaultMovementType,
   calculateMovementCapabilities,
+
+  // System-Specific Features
+  getActorInspiration,
+  getActorExhaustion,
+  getActorExplorationActivity,
+  setActorExplorationActivity,
+  getActorBulk,
+  getPartyBulk,
+  showHelpActionVisualization,
 
   // Utility
   refreshAllPartyLighting: async function() {

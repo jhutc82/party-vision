@@ -1,8 +1,8 @@
 {
   "id": "party-vision",
   "title": "Party Vision",
-  "description": "Enhanced party token system with individual vision, double-click to open sheets, combat toggle for all members, member access panel, chat commands, health indicators, status effects, passive perception display, and more player-friendly features.",
-  "version": "2.5.2",
+  "description": "Enhanced party token system with individual vision, system-specific features (D&D 5e inspiration/exhaustion/help action, PF2e exploration activities/bulk/aid action), double-click to open sheets, combat toggle, member access panel, chat commands, health indicators, status effects, and more player-friendly features.",
+  "version": "2.6.0",
   "authors": [
     {
       "name": "jhutc82",

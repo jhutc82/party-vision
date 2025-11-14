@@ -2,6 +2,53 @@
 
 All notable changes to Party Vision will be documented in this file.
 
+## [2.6.0] - 2025-11-14
+
+### Added
+
+**D&D 5e System-Specific Features**
+- **Inspiration Tracking**:
+  - Member access panel now displays a gold star icon for characters with inspiration
+  - Added toggle button to grant or remove inspiration directly from the panel
+  - Inspiration status updates in real-time
+- **Exhaustion Level Display**:
+  - Party token now shows exhaustion level indicator (skull icon with level number) when any party member has exhaustion
+  - Exhaustion level displayed in member access panel with red highlight
+  - Shows highest exhaustion level in the party
+- **Help Action Chains**:
+  - After deploying during combat, visual green lines appear showing which party members are within 5 feet
+  - Lines indicate who can use the Help action to assist each other
+  - Visual indicators auto-disappear after 10 seconds
+  - Can be toggled on/off in module settings
+
+**Pathfinder 2e System-Specific Features**
+- **Exploration Activities**:
+  - Member access panel includes dropdown to set each character's exploration activity
+  - Activities include: Avoid Notice, Defend, Detect Magic, Follow the Expert, Investigate, Repeat a Spell, Scout, Search, Track
+  - Activity selection persists and shows in party member info
+  - Notifications confirm when activity is set
+- **Bulk Tracking**:
+  - Party bulk summary displayed at top of member access panel showing total party bulk
+  - Individual member bulk shown for each character with encumbrance status
+  - Encumbered characters highlighted in red
+  - Helps track party carrying capacity during exploration
+- **Aid Action Coordination**:
+  - After deploying during combat, visual lines show which party members are within reach (10ft)
+  - Lines indicate who can use the Aid action to help each other
+  - Visual indicators auto-disappear after 10 seconds
+  - Can be toggled on/off in module settings
+
+### Changed
+- Enhanced member access panel with system-specific information
+- Updated module description to highlight new system-specific features
+- Added new module setting: "Show Help/Aid Action Chains" (default: enabled)
+
+### Technical
+- Added helper functions: `getActorInspiration()`, `getActorExhaustion()`, `getActorExplorationActivity()`, `setActorExplorationActivity()`, `getActorBulk()`, `getPartyBulk()`, `showHelpActionVisualization()`
+- Enhanced `refreshStatusEffects()` to display exhaustion level indicator
+- Updated public API exports with new system-specific functions
+- All new functions include proper input validation and error handling
+
 ## [2.5.2] - 2025-11-03
 
 ### Fixed
