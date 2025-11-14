@@ -49,6 +49,34 @@ function escapeHTML(str) {
 }
 
 /**
+ * Validate and sanitize image URL to prevent XSS
+ * @param {string} url - URL to validate
+ * @returns {string} Safe URL or default placeholder
+ */
+function sanitizeImageURL(url) {
+  if (typeof url !== 'string') return 'icons/svg/mystery-man.svg';
+  const urlLower = url.toLowerCase().trim();
+  // Block javascript: and data: URLs (data: can contain SVG with scripts)
+  if (urlLower.startsWith('javascript:') || urlLower.startsWith('data:')) {
+    console.warn('Party Vision | Blocked potentially malicious URL:', url);
+    return 'icons/svg/mystery-man.svg';
+  }
+  return url;
+}
+
+/**
+ * Validate CSS class name to prevent injection
+ * @param {string} className - Class name to validate
+ * @returns {string} Safe class name
+ */
+function sanitizeClassName(className) {
+  if (typeof className !== 'string') return 'fas fa-circle';
+  // Only allow alphanumeric, hyphens, spaces, and underscores
+  const sanitized = className.replace(/[^a-zA-Z0-9\-_\s]/g, '');
+  return sanitized || 'fas fa-circle';
+}
+
+/**
  * Debug logging (only logs when DEBUG_MODE is true)
  * @param {...any} args - Arguments to log
  */
@@ -586,8 +614,13 @@ Hooks.on('hoverToken', (token, hovered) => {
   const memberData = token.document?.getFlag('party-vision', 'memberData');
   if (!memberData || memberData.length === 0) return;
 
+  // Validate tooltip exists
+  if (!token.tooltip) {
+    console.warn('Party Vision | Token has no tooltip object');
+    return;
+  }
+
   const tooltip = token.tooltip;
-  if (!tooltip) return;
 
   if (hovered) {
     // Get the current tooltip text and strip any existing perception text
@@ -617,9 +650,42 @@ Hooks.on('hoverToken', (token, hovered) => {
     }
   } else {
     // Restore original tooltip when hover ends (strip perception text just in case)
-    const cleanText = (token._pvOriginalTooltip || tooltip.text).replace(/\s*\|\s*(PP|Perception|Perc):\s*[+\-]?\d+/g, '');
+    const cleanText = (token._pvOriginalTooltip || tooltip.text || '').replace(/\s*\|\s*(PP|Perception|Perc):\s*[+\-]?\d+/g, '');
     token._pvOriginalTooltip = cleanText;
     tooltip.text = cleanText;
+  }
+});
+
+// Clean up tooltip cache and debounce timers when token is destroyed to prevent memory leaks
+Hooks.on('destroyToken', (token) => {
+  // Clean up tooltip cache
+  if (token._pvOriginalTooltip) {
+    delete token._pvOriginalTooltip;
+  }
+
+  // Clean up pending lighting updates
+  if (pendingLightingUpdates.has(token.id)) {
+    clearTimeout(pendingLightingUpdates.get(token.id));
+    pendingLightingUpdates.delete(token.id);
+  }
+
+  // Clean up PIXI resources (health bars and status effect icons)
+  try {
+    // Remove party health bar
+    const healthBar = token.children.find(c => c.name === 'partyHealthBar');
+    if (healthBar) {
+      token.removeChild(healthBar);
+      healthBar.destroy({ children: true });
+    }
+
+    // Remove party effect icons
+    const effectIcons = token.children.filter(c => c.name === 'partyEffectIcon');
+    effectIcons.forEach(icon => {
+      token.removeChild(icon);
+      icon.destroy({ children: true });
+    });
+  } catch (error) {
+    console.warn('Party Vision | Error cleaning up PIXI resources:', error);
   }
 });
 
@@ -1120,17 +1186,11 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
     }
 
     console.log(`Party Vision | Forming party "${partyName}" with ${tokens.length} members, leader: ${leaderActor.name}`);
-  
-  // Apply formation preset if not 'current'
-  let positionedTokens = tokens;
-  if (formationKey !== 'current') {
-    const preset = FORMATION_PRESETS[formationKey];
-    if (preset && preset.positions) {
-      // Apply preset positions
-      positionedTokens = await applyFormationPreset(tokens, leaderIndex, preset);
-    }
-  }
-  
+
+  // Formation presets are applied during deployment, not during formation
+  // Just use the current positions of the tokens
+  const positionedTokens = tokens;
+
   // Calculate member data with offsets from leader
   const gridSize = canvas.grid.size;
   const leaderGridX = leaderToken.x / gridSize;
@@ -1299,23 +1359,6 @@ async function formParty(tokens, leaderIndex, formationKey, partyName, partyImag
     console.error('Party Vision | Error forming party:', error);
     ui.notifications.error(`Failed to form party: ${error.message}`);
   }
-}
-
-/**
- * Apply a formation preset to tokens
- * NOTE: This function is deprecated and will be removed in a future version.
- * Formation presets are now applied during deployment only.
- * @param {Array<Token>} tokens - Tokens to position
- * @param {number} leaderIndex - Index of the leader
- * @param {Object} preset - Formation preset data
- * @returns {Array<Token>} Tokens (unchanged)
- * @deprecated
- */
-async function applyFormationPreset(tokens, leaderIndex, preset) {
-  // Return tokens as-is since formation is applied during deployment
-  // Kept for backwards compatibility but does nothing
-  console.warn('Party Vision | applyFormationPreset is deprecated and will be removed in future versions');
-  return tokens;
 }
 
 /**
@@ -2019,7 +2062,7 @@ function hasWallCollision(centerX, centerY, width, height) {
   // Check if any corner is blocked by walls
   for (const corner of corners) {
     const ray = new foundry.canvas.geometry.Ray({ x: centerX, y: centerY }, corner);
-    
+
     // Check for wall collisions using modern Foundry v13 API
     if (typeof foundry.utils.lineSegmentIntersects === 'function') {
       for (const wall of canvas.walls.placeables) {
@@ -2030,9 +2073,14 @@ function hasWallCollision(centerX, centerY, width, height) {
           }
         }
       }
+    } else {
+      // If API is unavailable, assume collision as a safe fallback
+      // This prevents tokens from being placed inside walls in older Foundry versions
+      console.warn('Party Vision | Wall collision API unavailable, assuming collision for safety');
+      return true;
     }
   }
-  
+
   return false;
 }
 
@@ -2313,10 +2361,12 @@ async function updatePartyLightingFromActors(partyToken) {
   const memberData = partyToken.document.getFlag('party-vision', 'memberData');
   if (!memberData) return;
 
-  // CRITICAL: Allow time for game system to process item/effect changes naturally
+  // TODO: Replace with event-driven approach to eliminate race condition
+  // WORKAROUND: Allow time for game system to process item/effect changes naturally
   // We do NOT call actor prepare methods - the system does this automatically
-  // 100ms is enough time for most systems to complete their update hooks
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // 200ms should be enough time for most systems to complete their update hooks
+  // This is a known race condition that should be refactored to use proper event listening
+  await new Promise(resolve => setTimeout(resolve, 200));
 
   const lights = [];
 
@@ -2889,6 +2939,13 @@ Hooks.on('updateToken', (tokenDoc, change, options, userId) => {
   if (followLeaderMode && leaderToken && tokenDoc.id === leaderToken.id && (change.x || change.y)) {
     // Leader moved, update followers
     const gridSize = canvas.grid.size;
+
+    // Validate gridSize to prevent division by zero
+    if (!gridSize || gridSize === 0) {
+      console.error('Party Vision | Invalid grid size, cannot update follower positions');
+      return;
+    }
+
     const leaderGridX = leaderToken.x / gridSize;
     const leaderGridY = leaderToken.y / gridSize;
 
@@ -2979,10 +3036,12 @@ Hooks.on('createCombatant', async (combatant, options, userId) => {
 
   const partyToken = canvas.tokens.get(tokenDoc.id);
   if (!partyToken) return;
-  
-  // CRITICAL FIX: Wait for combat to fully initialize
+
+  // TODO: Replace with combat initialization event to eliminate race condition
+  // WORKAROUND: Wait for combat to fully initialize before showing deploy dialog
+  // This prevents UI issues when combat tracker hasn't finished setting up
   await new Promise(resolve => setTimeout(resolve, 500));
-  
+
   console.log('Party Vision | Party token added to combat - showing deploy dialog');
   ui.notifications.info(`Added party to combat`);
   
@@ -3006,11 +3065,13 @@ Hooks.on('deleteCombat', async (combat, options, userId) => {
   if (combatantTokens.length >= 2) {
     // Select the tokens
     combatantTokens.forEach(t => t.control({ releaseOthers: false }));
-    
+
     // Show form dialog
     ui.notifications.info("Combat ended. Form party?");
-    
-    // Auto-show form dialog after a delay
+
+    // TODO: Replace with canvas ready event to eliminate race condition
+    // WORKAROUND: Auto-show form dialog after a delay to allow UI to settle
+    // This ensures all combat cleanup is complete before showing the dialog
     setTimeout(() => {
       if (window.PartyVision && window.PartyVision.showFormPartyDialog) {
         window.PartyVision.showFormPartyDialog();
@@ -3228,7 +3289,7 @@ async function openAllMemberSheets(partyToken) {
     if (!actor) continue;
 
     // Check if user has permission to view
-    if (!actor.testUserPermission(game.user, 'OBSERVER')) continue;
+    if (!actor.testUserPermission(game.user, CONST.DOCUMENT_OWNERSHIP_LEVELS.OBSERVER)) continue;
 
     const sheet = actor.sheet;
     await sheet.render(true, { left: offsetX, top: offsetY });
@@ -3301,14 +3362,23 @@ async function addPartyToCombat(partyToken) {
 
   // If no active combat, create one
   if (!combat) {
-    console.log('Party Vision | No active combat, creating new encounter');
-    const combatData = {
-      scene: canvas.scene.id,
-      active: true
-    };
-    const created = await Combat.create(combatData);
-    combat = created;
-    await created.activate();
+    try {
+      console.log('Party Vision | No active combat, creating new encounter');
+      const combatData = {
+        scene: canvas.scene.id,
+        active: true
+      };
+      const created = await Combat.create(combatData);
+      if (!created) {
+        throw new Error('Combat creation returned null');
+      }
+      combat = created;
+      await created.activate();
+    } catch (error) {
+      console.error('Party Vision | Failed to create combat encounter:', error);
+      ui.notifications.error(`Failed to create combat encounter: ${error.message}`);
+      return;
+    }
   }
 
   console.log('Party Vision | Adding all party members to combat');
@@ -3370,7 +3440,8 @@ async function rollPartyInitiative(combat, combatantIds) {
       ? combat.combatants.get(id)
       : combat.combatants.find(c => c.actorId === id.actorId);
 
-    if (combatant && !combatant.initiative) {
+    // Check for null/undefined initiative (not 0, which is valid)
+    if (combatant && (combatant.initiative === null || combatant.initiative === undefined)) {
       console.log(`Party Vision | Rolling initiative for ${combatant.name}`);
       await combatant.rollInitiative();
     }
@@ -3397,7 +3468,7 @@ async function showMemberAccessPanel(partyToken) {
       actor,
       hp: actor ? getActorHP(actor) : null,
       maxHp: actor ? getActorMaxHP(actor) : null,
-      effects: actor ? actor.effects.filter(e => !e.disabled) : []
+      effects: actor ? Array.from(actor.effects).filter(e => !e.disabled) : []
     };
   }).filter(m => m.actor); // Only include valid actors
 
@@ -3407,13 +3478,13 @@ async function showMemberAccessPanel(partyToken) {
       <div class="member-list">
         ${members.map((m, i) => `
           <div class="member-item" data-index="${i}">
-            <img src="${m.img}" alt="${m.name}" class="member-portrait">
+            <img src="${sanitizeImageURL(m.img)}" alt="${escapeHTML(m.name)}" class="member-portrait">
             <div class="member-info">
-              <div class="member-name">${m.name}</div>
+              <div class="member-name">${escapeHTML(m.name)}</div>
               <div class="member-hp">HP: ${m.hp}/${m.maxHp}</div>
               ${m.effects.length > 0 ? `
                 <div class="member-effects">
-                  ${m.effects.map(e => `<span class="effect-icon" title="${e.name}"><i class="${e.icon || 'fas fa-circle'}"></i></span>`).join('')}
+                  ${m.effects.map(e => `<span class="effect-icon" title="${escapeHTML(e.name)}"><i class="${sanitizeClassName(e.icon || 'fas fa-circle')}"></i></span>`).join('')}
                 </div>
               ` : ''}
             </div>
@@ -3483,8 +3554,8 @@ async function showQuickSplitDialog(partyToken) {
       <div class="member-select-list">
         ${members.map(m => `
           <div class="member-select-item" data-index="${m.index}">
-            <img src="${m.img}" alt="${m.name}" class="member-portrait-small">
-            <span class="member-name">${m.name}</span>
+            <img src="${sanitizeImageURL(m.img)}" alt="${escapeHTML(m.name)}" class="member-portrait-small">
+            <span class="member-name">${escapeHTML(m.name)}</span>
           </div>
         `).join('')}
       </div>
@@ -3552,7 +3623,7 @@ function showPartyStatus() {
       name: m.name,
       hp: actor ? getActorHP(actor) : '?',
       maxHp: actor ? getActorMaxHP(actor) : '?',
-      effects: actor ? actor.effects.filter(e => !e.disabled).map(e => e.name).join(', ') : 'None'
+      effects: actor ? Array.from(actor.effects).filter(e => !e.disabled).map(e => e.name).join(', ') : 'None'
     };
   });
 
@@ -3758,7 +3829,7 @@ function getCharacterRole(actor) {
 
   // D&D 5e
   if (systemId === 'dnd5e') {
-    const classes = actor.items?.filter(i => i.type === 'class') || [];
+    const classes = actor.items ? Array.from(actor.items).filter(i => i.type === 'class') : [];
     const classNames = classes.map(c => c.name?.toLowerCase() || '').join(' ');
 
     // Tanks/Defenders (high AC, front line)
@@ -3949,15 +4020,21 @@ function refreshStatusEffects(partyToken) {
   const startY = 5;
 
   effects.forEach((effect, i) => {
-    const sprite = PIXI.Sprite.from(effect.icon || 'icons/svg/aura.svg');
-    sprite.name = 'partyEffectIcon';
-    sprite.width = iconSize;
-    sprite.height = iconSize;
-    sprite.x = startX + (i * iconSpacing);
-    sprite.y = startY;
-    sprite.alpha = 0.9;
+    // Sanitize icon URL to prevent loading malicious resources
+    const iconURL = sanitizeImageURL(effect.icon || 'icons/svg/aura.svg');
+    try {
+      const sprite = PIXI.Sprite.from(iconURL);
+      sprite.name = 'partyEffectIcon';
+      sprite.width = iconSize;
+      sprite.height = iconSize;
+      sprite.x = startX + (i * iconSpacing);
+      sprite.y = startY;
+      sprite.alpha = 0.9;
 
-    partyToken.addChild(sprite);
+      partyToken.addChild(sprite);
+    } catch (error) {
+      console.warn(`Party Vision | Failed to load effect icon: ${iconURL}`, error);
+    }
   });
 }
 
